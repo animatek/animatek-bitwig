@@ -17,6 +17,15 @@ from pathlib import Path
 from devices.common.document_graph import iter_owned_objects
 from devices.common.panel_helpers import connection, grid_layout, obj, value as v
 
+# The Polymer look, picked from the Panel Lab (2026-11-27):
+POPUP_HEADER = 1          # popup 1: the name in colour with a small arrow, no box ("Union v")
+POPUP_STEPPER = 6         # popup 6: "< LP 4 >", as Polymer's filter type
+KNOB_MAIN, KNOB_SMALL = 2, 1   # knob 2: light body (main knobs); knob 1 for the small ones
+FIELD_TEXT = 1            # field 1: bare coloured text ("0.00 st")
+BUTTONS_UNDERLINE = 6     # buttons 6: underlined choice ("0 -1 -2")
+TOGGLE_TEXT = 2           # tog 2: text only
+
+
 # ---------------------------------------------------------------------------------------------
 # Parameters, in the order of atek303.nitro's inputs (after note_in).
 #   kind "dec": decimal 0-1 knob (audio-rate input); "idx": choice (i32 value input);
@@ -228,7 +237,8 @@ def knob(binding, title, tooltip, x, y, *, size=2, color=6):
         "tooltip_text#6867": v("String", tooltip),
         "data_model#6220": binding, "title#6241": v("String", title),
         "knob_size#6223": v("Byte", size), "show_value_popup#10569": v("Bool", True),
-        "attribute_id#11012": v("Int16", 712), "knob_style#7055": v("Byte", 3),
+        "attribute_id#11012": v("Int16", 712),
+        "knob_style#7055": v("Byte", KNOB_SMALL if size == 1 else KNOB_MAIN),
         "label_color#7056": v("Int16", 6), "pie_color#7057": v("Byte", color),
     })
 
@@ -264,7 +274,7 @@ def drawing_item(binding, x, y, w, h):
     })
 
 
-def button_group(binding, tooltip, x, y, w, h=4):
+def button_group(binding, tooltip, x, y, w, h=4, style=BUTTONS_UNDERLINE):
     return obj(1712, "button_group_chooser_panel_item", {
         "layout_settings#6226": v("Object", grid_layout(x, y, w, h)),
         "is_visible#6309": v("Bool", True), "is_enabled#6310": v("Bool", True),
@@ -272,7 +282,7 @@ def button_group(binding, tooltip, x, y, w, h=4):
         "help_location#10546": v("Byte", 0), "data_model#6220": binding,
         "attribute_id#11012": v("Int16", 457), "is_horizontal#6255": v("Bool", True),
         "break_count#6256": v("Byte", 0), "label_style#6257": v("Byte", 0),
-        "button_style#7548": v("Byte", 0), "color#10143": v("Int16", 0),
+        "button_style#7548": v("Byte", style), "color#10143": v("Int16", 0),
     })
 
 
@@ -282,7 +292,7 @@ def toggle(binding, title, tooltip, x, y, w, h=5):
         "is_visible#6309": v("Bool", True), "is_enabled#6310": v("Bool", True),
         "data_model#6220": binding, "attribute_id#11012": v("Int16", 255),
         "title#6241": v("String", title), "tooltip_text#6867": v("String", tooltip),
-        "icon_name#6239": v("String", ""), "style#6240": v("Byte", 4),
+        "icon_name#6239": v("String", ""), "style#6240": v("Byte", TOGGLE_TEXT),
         "label_style#6267": v("Byte", 0), "invert_value#6552": v("Bool", False),
         "is_selected#6719": v("Bool", False), "color#7527": v("Int16", 999),
         "font#7530": v("Byte", 0),
@@ -328,15 +338,15 @@ def main_panel(ref_of, note_fx_ref, fx_ref, drawing_ref):
         return p[ident][1][5]
 
     osc = section([
-        popup(p["WAVE"][0], tip("WAVE"), 14, 0, 36, color=OSC_COLOR),
+        popup(p["WAVE"][0], tip("WAVE"), 22, 0, 22, color=OSC_COLOR, style=POPUP_HEADER),
         label("Phase", 1, 6, 11), k("PHASE", 1, 9, size=1, color=OSC_COLOR),
         toggle(p["RETRIG"][0], "Retrig", tip("RETRIG"), 1, 19, 11),
         k("SHAPE", 13, 5, color=OSC_COLOR),
         drawing_item(drawing_ref, 32, 7, 13, 10),
         k("SYNC", 45, 5, color=OSC_COLOR),
         k("FOLD", 13, 20, color=OSC_COLOR),
-        label("Semi", 33, 21, 14), number_field(p["SEMI"][0], tip("SEMI"), 33, 25, 14, color=OSC_COLOR),
-        label("Fine", 48, 21, 15), number_field(p["FINE"][0], tip("FINE"), 48, 25, 15, color=OSC_COLOR),
+        label("Semi", 33, 21, 14), number_field(p["SEMI"][0], tip("SEMI"), 33, 25, 14, color=OSC_COLOR, style=FIELD_TEXT),
+        label("Fine", 48, 21, 15), number_field(p["FINE"][0], tip("FINE"), 48, 25, 15, color=OSC_COLOR, style=FIELD_TEXT),
     ], 0, 0, 64, 36)
     sub = section([
         k("SUB_LEVEL", 0, 0, color=OSC_COLOR),
