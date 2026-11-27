@@ -32,6 +32,9 @@ Por eso hay una 6.1.7 aparte, sacada del .deb de bitwig.com sin instalar nada en
 
 ## Arrancar
 
+Desde el menú de aplicaciones: **Patchbay Launcher** (Multimedia), con `~/.local/share/applications/patchbay-launcher.desktop`.
+Si `apps/` cambia de sitio, hay que actualizar esa entrada.
+
 ```bash
 /mnt/SPEED/CODE/Bitwig-Mods/apps/Patchbay-Launcher/patchbay-launcher   # el launcher (log en ~/.local/share/PatchbayLauncher/logs)
 sh /mnt/SPEED/CODE/Bitwig-Mods/apps/BML-0.36.0-dev.17-linux/bml-ui.sh   # Patchbay sin launcher
