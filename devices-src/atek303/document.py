@@ -33,7 +33,10 @@ PARAMETERS = [
      "Filter envelope decay, 200 ms - 2.5 s as the circuit (accents force the minimum)"),
     ("dec", "Accent", "ACCENT", "accent", 0.5,
      "Accent depth; notes with velocity 100+ are accented, and consecutive accents build up"),
-    ("idx", "Wave", "WAVE", "wave_type", ["Saw", "Square", "Triangle"],
+    ("idx", "Wave", "WAVE", "wave_type", [
+        "Saw|The 303 ramp: capacitor core with a rounded reset",
+        "Square|The 303 comparator square, with its droop; Shape sets the width",
+        "Triangle|Skewable triangle; Shape moves the peak"],
      "Saw: the 303 ramp. Square: the circuit's comparator. Triangle: new"),
     ("dec", "Out", "VOLUME", "volume", 0.5, "Output level"),
     ("dec", "Phase", "PHASE", "phase_knob", 0.0, "Start phase of the VCO on each new note, with Retrig on"),
@@ -116,8 +119,8 @@ def decimal_atom(name, ident, default, minimum=0.0, maximum=1.0):
 
 def indexed_atom(name, ident, items):
     entries = [obj(258, "indexed_value_item", {
-        "id#650": v("Byte", index), "name#651": v("String", label), "icon#9823": v("String", ""),
-        "description#9824": v("String", ""), "deprecated#10795": v("Bool", False),
+        "id#650": v("Byte", index), "name#651": v("String", label.split("|")[0]), "icon#9823": v("String", ""),
+        "description#9824": v("String", label.partition("|")[2]), "deprecated#10795": v("Bool", False),
     }) for index, label in enumerate(items)]
     value_type = obj(155, "indexed_value_type", {
         "items#393": v("ObjectList", owned(*entries)), "default_value#6958": v("Byte", 0),
@@ -230,17 +233,17 @@ def knob(binding, title, tooltip, x, y, *, size=2, color=6):
     })
 
 
-def popup(binding, tooltip, x, y, w, h=5, color=6):
+def popup(binding, tooltip, x, y, w, h=5, color=6, style=0, label_style=0):
     return obj(1714, "popup_chooser_panel_item", {
         "layout_settings#6226": v("Object", grid_layout(x, y, w, h)),
         "is_visible#6309": v("Bool", True), "is_enabled#6310": v("Bool", True),
         "tooltip_text#6867": v("String", tooltip), "data_model#6220": binding,
-        "attribute_id#11012": v("Int16", 457), "label_style#6262": v("Byte", 0),
-        "style#6266": v("Byte", 0), "color#7528": v("Int16", color), "help_id#10543": v("String", ""),
+        "attribute_id#11012": v("Int16", 457), "label_style#6262": v("Byte", label_style),
+        "style#6266": v("Byte", style), "color#7528": v("Int16", color), "help_id#10543": v("String", ""),
     })
 
 
-def number_field(binding, tooltip, x, y, w, h=4, color=6):
+def number_field(binding, tooltip, x, y, w, h=4, color=6, style=None):
     # Only the fields whose types are clear; Bitwig fills in the rest, as for older documents.
     return obj(1713, "number_field_panel_item", {
         "layout_settings#6226": v("Object", grid_layout(x, y, w, h)),
@@ -248,6 +251,7 @@ def number_field(binding, tooltip, x, y, w, h=4, color=6):
         "tooltip_text#6867": v("String", tooltip), "data_model#6220": binding,
         "attribute_id#11012": v("Int16", 712),
         "show_value_bar#6581": v("Bool", False), "color#7526": v("Int16", color),
+        **({"style#6540": v("Byte", style)} if style is not None else {}),
     })
 
 
@@ -376,6 +380,44 @@ def main_panel(ref_of, note_fx_ref, fx_ref, drawing_ref):
     })
 
 
+def lab_panel(ref_of):
+    """Panel Lab: every style and colour side by side, labelled, to pick the look from one capture."""
+    wave = ref_of["WAVE"]
+    items = []
+    for i in range(6):
+        x = 2 + i * 34
+        items += [label(f"popup style {i}", x, 0, 32), popup(wave, "", x, 3, 32, style=i, color=1),
+                  label(f"style {i} / label 1", x, 9, 32), popup(wave, "", x, 12, 32, style=i, label_style=1, color=1)]
+    for c in range(8):
+        x = 2 + c * 12
+        items += [label(f"c{c}", x, 19, 10, color=c), knob(ref_of["CUTOFF"], "", "", x, 22, size=1, color=c)]
+    for st in range(4):
+        x = 100 + st * 26
+        items += [label(f"field {st}", x, 19, 24), number_field(ref_of["SEMI"], "", x, 23, 24, color=1, style=st)]
+    for st in range(3):
+        x = 2 + st * 34
+        items += [label(f"buttons {st}", x, 33, 32), button_group(ref_of["WAVE"], "", x, 36, 32)]
+        items[-1]["fields"]["button_style#7548"] = v("Byte", st)
+    for c in range(8):
+        items.append(label(f"Title {c}", 104 + c * 12, 33, 12, color=c))
+    for st in range(5):
+        x = 104 + st * 19
+        t = toggle(ref_of["RETRIG"], f"tog {st}", "", x, 38, 18)
+        t["fields"]["style#6240"] = v("Byte", st)
+        items.append(t)
+    grid = obj(1681, "grid_panel_item", {
+        "layout_settings#6226": v("NullObject"), "items#6221": v("ObjectList", owned(*items)),
+        "border_style#6228": v("Byte", 0), "title#6242": v("String", ""),
+        "show_title#6243": v("Bool", False), "title_color#6522": v("Byte", 6),
+        "brightness#6245": v("Byte", 1),
+    })
+    return obj(1680, "panel", {
+        "name#6211": v("String", "Main"), "root_item#6212": v("Object", grid),
+        "width#6232": v("Int16", 206), "height#6233": v("Byte", 53),
+        "expressions#6277": v("ObjectList", []),
+    })
+
+
 def metadata(project, revision):
     identity = project["identity"]
     tags = project["presentation"]["tags"]
@@ -396,7 +438,7 @@ def metadata(project, revision):
     return {**obj(4, "meta", fields), "wide_names": [False] * len(fields)}
 
 
-def document(project, binary, *, note_fx_output_port=1):
+def document(project, binary, *, note_fx_output_port=1, lab=False):
     shader = (Path(__file__).parent / "osc_display.sksl").read_text(encoding="utf-8")
     bindings = []
 
@@ -457,7 +499,7 @@ def document(project, binary, *, note_fx_output_port=1):
 
     for spec, atom in zip(PARAMETERS, atoms):
         ref_of[spec[2]] = ref(atom)
-    panel = main_panel(ref_of, ref(note_fx), ref(fx), ref(drawing))
+    panel = lab_panel(ref_of) if lab else main_panel(ref_of, ref(note_fx), ref(fx), ref(drawing))
 
     identity = project["identity"]
     tags = project["presentation"]["tags"]
