@@ -85,9 +85,10 @@ SkSL para el panel y el compilador del propio `bitwig.jar` de la 6.1.7. Montado 
   `pie_color` de los mandos parece un arcoiris: 1 naranja, 2 amarillo, 4 azul, 5 morado (0 y 3
   por confirmar). Dibujos: SkSL en un componente 5512 alimentado por una salida `f32<4>` del Nitro;
   Bitwig declara `iResolution` (para compilar en local hay que anteponerlo).
-- **Iconos:** `image_panel_item` (1719) y el `icon_name` de los toggles toman la ruta bajo
-  `resources/icons` **con** `.svg` (`device/keytrack.svg`, como en el codigo de Bitwig); sin la
-  extension no se dibujan y no da error. Opacidad y escala valen 1 por defecto. Utiles:
+- **Iconos:** `image_panel_item` (1719) busca el icono **solo por nombre de archivo**: `adsr.svg`
+  o `adsr` se dibujan; `device/adsr.svg`, rutas y ruta absoluta no, y no da error (Lab 3).
+  `document.py` quita la carpeta. El color (paleta) funciona; `svg_data` (SVG dentro del device)
+  tambien se dibuja pero sin color. Opacidad y escala valen 1 por defecto. Iconos en botones: en prueba. Utiles:
   `device/adsr` (mini envolvente de Polymer), `device/keytrack`, `device/phase`, `device/power_on`.
 - Primer objetivo: ATEK303 como instrumento nativo. La secuencia vive en el clip: velocidad >= 100
   es accent y notas solapadas son slide (asi lo decide Open303, `rosic_Open303.cpp:193-195`).

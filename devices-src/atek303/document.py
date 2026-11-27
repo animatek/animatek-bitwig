@@ -271,9 +271,11 @@ def number_field(binding, tooltip, x, y, w, h=4, color=6, style=None):
 
 
 def icon_file(name):
-    """Bitwig names its icons by path under resources/icons WITH the extension (its own code uses
-    "device/keytrack.svg"); without ".svg" the icon is silently not drawn."""
-    return name if name.endswith(".svg") else name + ".svg"
+    """Bitwig finds panel icons by FILE NAME only: "adsr.svg" or "adsr" draw, "device/adsr.svg"
+    does not, and nothing reports it (Panel Lab 3, 2026-11-27). The editor keeps the folder for
+    its preview; it is dropped here."""
+    base = name.rsplit("/", 1)[-1]
+    return base if base.endswith(".svg") else base + ".svg"
 
 
 def image(filename, x, y, w, h, color=None):
@@ -450,21 +452,22 @@ def raw_image(fields_extra, x, y, w, h):
 
 
 def lab_panel(ref_of, mod_ref=None):
-    """Panel Lab 3: which icon name format Bitwig draws (the same ADSR icon, eight ways)."""
-    items = [label("Lab 3: el mismo icono (ADSR) escrito de 8 formas; cual se ve?", 2, 0, 140)]
-    for i, name in enumerate(ICON_FORMATS):
-        x = 2 + (i % 4) * 50
-        y = 5 if i < 4 else 17
-        shown = name if len(name) < 30 else "ruta completa"
-        items += [label(f"{i}: {shown}", x, y, 48),
-                  raw_image({"filename#6258": v("String", name), "color#6521": v("Int16", 3)}, x + 20, y + 4, 6, 6)]
-    items += [label("7: svg_data (dibujo propio)", 152, 17, 48),
-              raw_image({"svg_data#6259": v("String", OWN_SVG), "color#6521": v("Int16", 3)}, 172, 21, 6, 6)]
-    for i, name in enumerate(["device/power_on.svg", "device/power_on", "power_on.svg"]):
-        x = 2 + i * 50
-        t = toggle(ref_of["FILTER_ON"], "", "", x + 18, 34, 8, 5)
-        t["fields"]["icon_name#6239"] = v("String", name)
-        items += [label(f"boton {i}: {name}", x, 30, 48), t]
+    """Panel Lab 4: buttons with an icon (name only, as images need), in each button style,
+    and image scale."""
+    items = [label("Lab 4: botones con icono (power_on) en los estilos 0-3, con y sin titulo", 2, 0, 160)]
+    for st in range(4):
+        x = 2 + st * 40
+        for row, (name, title) in enumerate([("power_on", ""), ("power_on.svg", ""), ("power_on", "On")]):
+            y = 5 + row * 10
+            t = toggle(ref_of["FILTER_ON"], title, "", x + 12, y + 3, 12, 6)
+            t["fields"]["icon_name#6239"] = v("String", name)
+            t["fields"]["style#6240"] = v("Byte", st)
+            items += [label(f"estilo {st}: {name} {title}", x, y, 38), t]
+    for i, sc in enumerate([1.0, 1.5, 2.0]):
+        x = 2 + i * 40
+        img = raw_image({"filename#6258": v("String", "adsr.svg"), "color#6521": v("Int16", 3),
+                         "scale#6767": v("Double", sc)}, x + 14, 40, 10, 8)
+        items += [label(f"icono escala {sc}", x, 36, 38), img]
     grid = obj(1681, "grid_panel_item", {
         "layout_settings#6226": v("NullObject"), "items#6221": v("ObjectList", owned(*items)),
         "border_style#6228": v("Byte", 0), "title#6242": v("String", ""),

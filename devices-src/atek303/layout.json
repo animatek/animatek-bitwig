@@ -185,7 +185,7 @@
           "x": 8,
           "y": 7,
           "size": 1,
-          "color": 3
+          "color": 4
         },
         {
           "type": "knob",
@@ -193,7 +193,7 @@
           "x": 8,
           "y": 18,
           "size": 1,
-          "color": 3
+          "color": 2
         },
         {
           "type": "knob",
@@ -217,7 +217,8 @@
           "y": 1,
           "icon": "device/power_on",
           "w": 3,
-          "h": 3
+          "h": 3,
+          "color": 3
         },
         {
           "type": "icon",
@@ -225,7 +226,8 @@
           "y": 20,
           "icon": "onscreen_keyboard",
           "w": 4,
-          "h": 4
+          "h": 4,
+          "color": 2
         },
         {
           "type": "icon",
@@ -233,7 +235,8 @@
           "y": 9,
           "icon": "device/adsr",
           "w": 4,
-          "h": 4
+          "h": 4,
+          "color": 4
         }
       ]
     },
