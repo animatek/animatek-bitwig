@@ -381,30 +381,30 @@ def main_panel(ref_of, note_fx_ref, fx_ref, drawing_ref):
 
 
 def lab_panel(ref_of):
-    """Panel Lab: every style and colour side by side, labelled, to pick the look from one capture."""
+    """Panel Lab: every style side by side, numbered, to pick the look from one capture."""
     wave = ref_of["WAVE"]
     items = []
     for i in range(6):
         x = 2 + i * 34
-        items += [label(f"popup style {i}", x, 0, 32), popup(wave, "", x, 3, 32, style=i, color=1),
-                  label(f"style {i} / label 1", x, 9, 32), popup(wave, "", x, 12, 32, style=i, label_style=1, color=1)]
-    for c in range(8):
-        x = 2 + c * 12
-        items += [label(f"c{c}", x, 19, 10, color=c), knob(ref_of["CUTOFF"], "", "", x, 22, size=1, color=c)]
+        items += [label(f"popup {i}", x, 0, 32), popup(wave, "", x, 3, 32, style=i, color=1),
+                  label(f"popup {i} / label 1", x, 9, 32),
+                  popup(wave, "", x, 12, 32, style=i, label_style=1, color=1)]
+    for st in range(8):
+        kn = knob(ref_of["CUTOFF"], f"knob {st}", "", 2 + st * 20, 18, color=1)
+        kn["fields"]["knob_style#7055"] = v("Byte", st)
+        items.append(kn)
     for st in range(4):
-        x = 100 + st * 26
-        items += [label(f"field {st}", x, 19, 24), number_field(ref_of["SEMI"], "", x, 23, 24, color=1, style=st)]
-    for st in range(3):
-        x = 2 + st * 34
-        items += [label(f"buttons {st}", x, 33, 32), button_group(ref_of["WAVE"], "", x, 36, 32)]
-        items[-1]["fields"]["button_style#7548"] = v("Byte", st)
-    for c in range(8):
-        items.append(label(f"Title {c}", 104 + c * 12, 33, 12, color=c))
+        x = 2 + st * 22
+        items += [label(f"field {st}", x, 34, 20), number_field(ref_of["SEMI"], "", x, 37, 20, color=1, style=st)]
     for st in range(5):
-        x = 104 + st * 19
-        t = toggle(ref_of["RETRIG"], f"tog {st}", "", x, 38, 18)
+        t = toggle(ref_of["RETRIG"], f"tog {st}", "", 92 + st * 22, 36, 20)
         t["fields"]["style#6240"] = v("Byte", st)
         items.append(t)
+    for st in range(3):
+        bg = button_group(ref_of["WAVE"], "", 2 + st * 40, 45, 38)
+        bg["fields"]["button_style#7548"] = v("Byte", st)
+        items += [bg]
+    items.append(label("buttons 0 / 1 / 2", 122, 45, 40))
     grid = obj(1681, "grid_panel_item", {
         "layout_settings#6226": v("NullObject"), "items#6221": v("ObjectList", owned(*items)),
         "border_style#6228": v("Byte", 0), "title#6242": v("String", ""),
