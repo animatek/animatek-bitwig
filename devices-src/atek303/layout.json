@@ -125,16 +125,6 @@
           "w": 12,
           "h": 3,
           "color": 6
-        },
-        {
-          "type": "popup",
-          "param": "RATIO",
-          "x": 3,
-          "y": 30,
-          "w": 12,
-          "h": 4,
-          "style": 7,
-          "color": 1
         }
       ]
     },
@@ -149,7 +139,7 @@
           "type": "knob",
           "param": "SUB_LEVEL",
           "x": 0,
-          "y": 1,
+          "y": 2,
           "size": 2,
           "color": 5
         },
@@ -157,7 +147,7 @@
           "type": "buttons",
           "param": "SUB_OCTAVE",
           "x": 17,
-          "y": 10,
+          "y": 11,
           "w": 20,
           "h": 4,
           "style": 6
@@ -166,7 +156,7 @@
           "type": "buttons",
           "param": "SUB_SHAPE",
           "x": 17,
-          "y": 3,
+          "y": 4,
           "w": 20,
           "h": 4,
           "style": 6
@@ -193,7 +183,7 @@
           "type": "label",
           "text": "Env",
           "x": 0,
-          "y": 8,
+          "y": 10,
           "w": 10,
           "h": 3,
           "color": 6
@@ -202,7 +192,7 @@
           "type": "knob",
           "param": "ENV_MOD",
           "x": 8,
-          "y": 5,
+          "y": 7,
           "size": 1,
           "color": 3
         },
@@ -210,7 +200,7 @@
           "type": "label",
           "text": "Key",
           "x": 0,
-          "y": 19,
+          "y": 21,
           "w": 10,
           "h": 3,
           "color": 6
@@ -219,7 +209,7 @@
           "type": "knob",
           "param": "KEYTRACK",
           "x": 8,
-          "y": 16,
+          "y": 18,
           "size": 1,
           "color": 3
         },
@@ -227,7 +217,7 @@
           "type": "knob",
           "param": "CUTOFF",
           "x": 17,
-          "y": 5,
+          "y": 7,
           "size": 3,
           "color": 3
         },
@@ -235,19 +225,9 @@
           "type": "knob",
           "param": "RESONANCE",
           "x": 36,
-          "y": 9,
+          "y": 11,
           "size": 2,
           "color": 3
-        },
-        {
-          "type": "toggle",
-          "param": "FILTER_ON",
-          "title": "On",
-          "x": 1,
-          "y": 0,
-          "w": 7,
-          "h": 4,
-          "style": 2
         }
       ]
     },
@@ -262,7 +242,7 @@
           "type": "label",
           "text": "Envelope",
           "x": 0,
-          "y": 0,
+          "y": 2,
           "w": 56,
           "h": 3,
           "color": 4
@@ -271,7 +251,7 @@
           "type": "knob",
           "param": "DECAY",
           "x": 0,
-          "y": 5,
+          "y": 6,
           "size": 2,
           "color": 4
         },
@@ -279,7 +259,7 @@
           "type": "knob",
           "param": "ACCENT",
           "x": 40,
-          "y": 5,
+          "y": 6,
           "size": 2,
           "color": 4
         }
@@ -388,7 +368,7 @@
         {
           "type": "knob",
           "x": 7,
-          "y": 2,
+          "y": 3,
           "param": "NOISE",
           "size": 1,
           "color": 6
@@ -396,13 +376,47 @@
         {
           "type": "label",
           "x": 6,
-          "y": 11,
+          "y": 12,
           "text": "Noise",
           "w": 12,
           "h": 3,
           "color": 6
         }
       ]
+    }
+  ],
+  "parked": [
+    {
+      "section": "osc",
+      "item": {
+        "type": "icon",
+        "x": 7,
+        "y": 2,
+        "icon": "Retrig",
+        "w": 3,
+        "h": 3
+      }
+    },
+    {
+      "section": "filter",
+      "item": {
+        "type": "modsource",
+        "x": 50,
+        "y": 33,
+        "w": 4,
+        "h": 3
+      }
+    },
+    {
+      "section": "filter",
+      "item": {
+        "type": "icon",
+        "x": 5,
+        "y": 2,
+        "icon": "device/power_on",
+        "w": 3,
+        "h": 3
+      }
     }
   ]
 }

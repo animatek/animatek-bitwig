@@ -288,14 +288,14 @@ def mapping_source(binding, x, y, w, h):
 
 
 def modulation_atom(name, ident, connections):
-    """A modulation source fed by the Nitro core, as Polymer's envelopes are."""
-    display = obj(1488, "modulation_source_atom_display_settings", {
-        "is_source_expanded_in_inspector#5455": v("Bool", False),
-    })
+    """A modulation source fed by the Nitro core, as Polymer's envelopes are.
+
+    No display_settings: Bitwig stores it per display (a map keyed by display name), and writing
+    it as a plain object makes the device fail to load and Bitwig crash (2026-11-27)."""
     return obj(766, "modulation_source_atom", {
         "settings#6194": settings(connections), "channel_count#607": v("Byte", 0),
         "oversampling#608": v("Byte", 0), "name#374": v("String", name),
-        "preset_identifier#701": v("String", ident), "display_settings#5452": v("Object", display),
+        "preset_identifier#701": v("String", ident),
     })
 
 
