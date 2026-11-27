@@ -53,6 +53,22 @@ workspace con `BML/`, `Mods/`, `bitwig/jars/<ver>/` y `maps/<build>/` (el zip
 Para que el launcher encuentre un mod publicado: `<mod-id>-<ver>.zip` en la release,
 `<mod-id>/mod.json` en el repo y nombre con categoria (`terceros/patchbay-launcher/docs/PUBLISHING.md`).
 
+## Devices nativos (Nitro)
+
+Se hacen con el blueprint de polarity (`terceros/bitwig-devices-blueprint`): Nitro para el DSP,
+SkSL para el panel y el compilador del propio `bitwig.jar` de la 6.1.7. Montado y probado el
+2026-11-27 con su ejemplo (Blueprint Gain: preflight PASS y Bitwig lo registra).
+
+- Herramientas: Python 3.12 en `.venv` del blueprint (con `uv`), Rust en `~/.cargo` (rustup, sin
+  tocar el PATH: anteponer `$HOME/.cargo/bin`) y `tools/javac25` como `--javac`.
+- `build-local-host-tools.py` lo bloqueo una vez el clasificador de Claude Code; Javier autorizo
+  lanzarlo.
+- Lo construido para probar va a `build/devices/` (fuera de Git), que es la carpeta registrada en
+  Patchbay: `~/.config/bml/mods/custom-device-registrar/config.json`. Bitwig se reinicia desde
+  Patchbay para que lo vea.
+- Primer objetivo: ATEK303 como instrumento nativo. La secuencia vive en el clip: velocidad >= 100
+  es accent y notas solapadas son slide (asi lo decide Open303, `rosic_Open303.cpp:193-195`).
+
 ## Reglas
 
 - **Nunca** entra en Git nada de Bitwig: ni `bitwig.jar`, ni clases descompiladas, ni mapas.

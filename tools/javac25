@@ -1,0 +1,4 @@
+#!/bin/sh
+# javac del sistema (27) compilando para el Java de Bitwig 6.1.7 (25): sin esto el puente Nitro
+# del blueprint falla con "class file version 71.0".
+exec /usr/bin/javac --release 25 "$@"
