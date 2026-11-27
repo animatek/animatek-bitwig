@@ -91,10 +91,10 @@ def note_event_port(name, index):
 PARAMETERS = [
     ("Tuning", "TUNING", "tuning", 0.5, "Master tuning, 400-480 Hz for A4"),
     ("Cutoff", "CUTOFF", "cutoff", 0.35, "Filter cutoff, 314-2394 Hz"),
-    ("Resonance", "RESONANCE", "resonance", 0.5, "Filter resonance"),
+    ("Resonance", "RESONANCE", "resonance", 0.5, "Filter resonance (linear, as the VR4 pot)"),
     ("Env Mod", "ENV_MOD", "env_mod", 0.5, "Filter envelope depth (log taper, as the 303 pot)"),
-    ("Decay", "DECAY", "decay", 0.4, "Filter envelope decay, 200-2000 ms (accents force the minimum)"),
-    ("Accent", "ACCENT", "accent", 0.5, "Accent depth; notes with velocity 100+ are accented"),
+    ("Decay", "DECAY", "decay", 0.4, "Filter envelope decay, 200 ms - 2.5 s as the circuit (accents force the minimum)"),
+    ("Accent", "ACCENT", "accent", 0.5, "Accent depth; notes with velocity 100+ are accented, and consecutive accents build up"),
     ("Waveform", "WAVEFORM", "waveform", 0.0, "Saw (0) to square (1), blended"),
     ("Volume", "VOLUME", "volume", 0.5, "Output level"),
 ]

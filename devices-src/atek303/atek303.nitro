@@ -1,10 +1,13 @@
-component atek303_v1
+component atek303_v2
 {
-    // ATEK303 for Bitwig: the Open303 engine (Robin Schmidt, MIT) with the tweaks of the
-    // ATEK303 VCV module, written in Nitro. Mono, last-note priority:
+    // ATEK303 for Bitwig: the "Circuit (ATEK)" sound model of the ATEK303 VCV module, on the
+    // Open303 engine (Robin Schmidt, MIT), written in Nitro. Mono, last-note priority:
     //   - a note that starts while another is held slides (pitch-domain glide, 120 ms);
-    //   - velocity >= 100 (0.787) is an accent: shorter filter decay, accent sweep, louder.
-    // Everything runs in f64; the oscillator and the TB-303 filter run 4x oversampled.
+    //   - velocity >= 100 (0.787) is an accent; consecutive accents build up (C72 network).
+    // Circuit model: ATEK oscillator (ramp core, comparator square with droop), ATEK diode-ladder
+    // filter (diode in every cell, C18/C19 = 33/18, input drive x2, linear resonance pot), OTA and
+    // output saturation, circuit decay range (T 200 ms - 2.5 s), subtle DAC error and drift.
+    // Everything runs in f64; oscillator and filter run 4x oversampled.
     // Bitwig 6.1 Nitro has no tan/tanh/mix/clamp: they are written out below.
 
     // ---- note state (written by the event handler, applied in process) ----
@@ -73,15 +76,31 @@ component atek303_v1
     f64 amp_time = 0.0;        // ms since note on
     f64 amp_out = 0.0;
     f64 amp_release = 1.0;     // ms
-    f64 phase = 0.5;
+    f64 accent_fast = 0.0;     // accent accumulators (Q36/C72 and Q38/C62)
+    f64 accent_slow = 0.0;
 
-    // TB-303 filter (4x)
+    // drift
+    i32 drift_count = 0;
+    f64 drift_seed = 0.137;
+    f64 drift_pitch = 0.0;
+    f64 drift_cut = 0.0;
+
+    // ATEK oscillator (4x)
+    f64 phase = 0.0;
+    f64 lp_saw = 0.0;
+    f64 lp_sq = 0.0;
+    f64 hp_saw_x = 0.0;
+    f64 hp_saw_y = 0.0;
+    f64 hp_sq_x = 0.0;
+    f64 hp_sq_y = 0.0;
+
+    // ATEK filter (4x)
     f64 y1 = 0.0;
     f64 y2 = 0.0;
     f64 y3 = 0.0;
     f64 y4 = 0.0;
-    f64 fb_x1 = 0.0;
-    f64 fb_y1 = 0.0;
+    f64 fb_prev = 0.0;
+    f64 fb_hp = 0.0;
     // one-pole highpass before the filter (4x)
     f64 hp1_x1 = 0.0;
     f64 hp1_y1 = 0.0;
@@ -129,13 +148,24 @@ component atek303_v1
 
     f64 tanh_f(f64 x)
     {
-        // Pade approximation, exact enough for the 303 square shaper; saturates beyond +-3.
-        if (x > 3.0)
-            return 1.0;
-        if (x < -3.0)
-            return -1.0;
-        f64 x2 = x * x;
-        return x * (27.0 + x2) / (27.0 + 9.0 * x2);
+        f64 c = x;
+        if (c > 20.0)
+            c = 20.0;
+        if (c < -20.0)
+            c = -20.0;
+        f64 e = exp(2.0 * c);
+        return (e - 1.0) / (e + 1.0);
+    }
+
+    f64 sinh_f(f64 x)
+    {
+        f64 ex = exp(x);
+        return 0.5 * (ex - 1.0 / ex);
+    }
+
+    f64 diode(f64 x)
+    {
+        return 1.2 * tanh_f(x / 1.2);
     }
 
     f64 poly_blep(f64 t, f64 dt)
@@ -153,21 +183,31 @@ component atek303_v1
         return 0.0;
     }
 
-    f64 shape(f64 x)
+    f64 fract_f(f64 x)
     {
-        f64 c = x;
-        if (c > 1.4142135623730951)
-            c = 1.4142135623730951;
-        if (c < -1.4142135623730951)
-            c = -1.4142135623730951;
-        return c - c * c * c / 6.0;
+        return x - floor(x);
+    }
+
+    // Deterministic per-note DAC error, -1..1 (each unit detunes its own way, always the same).
+    f64 dac_error(f64 note)
+    {
+        return 2.0 * fract_f(sin(note * 12.9898 + 78.233) * 43758.5453) - 1.0;
+    }
+
+    // Uniform -1..1 from a running seed.
+    f64 noise_f()
+    {
+        drift_seed = fract_f(drift_seed * 997.0 + 0.6180339887498949);
+        return 2.0 * fract_f(sin(drift_seed * 6283.185307179586) * 43758.5453) - 1.0;
     }
 
     void reset_voice()
     {
-        phase = 0.5;
+        phase = 0.0;
+        lp_saw = 0.0; lp_sq = 0.0;
+        hp_saw_x = 0.0; hp_saw_y = 0.0; hp_sq_x = 0.0; hp_sq_y = 0.0;
         y1 = 0.0; y2 = 0.0; y3 = 0.0; y4 = 0.0;
-        fb_x1 = 0.0; fb_y1 = 0.0;
+        fb_prev = 0.0; fb_hp = 0.0;
         hp1_x1 = 0.0; hp1_y1 = 0.0;
         aa1_x1 = 0.0; aa1_x2 = 0.0; aa1_y1 = 0.0; aa1_y2 = 0.0;
         aa2_x1 = 0.0; aa2_x2 = 0.0; aa2_y1 = 0.0; aa2_y2 = 0.0;
@@ -193,16 +233,36 @@ component atek303_v1
         f64 fs4 = 4.0 * fs;
         f64 pi = 3.141592653589793;
 
-        // Knob mappings, as in the ATEK303 VCV module.
+        // ---- drift: slow random walks, updated every 16 samples (tau 25 s) ----
+        drift_count = drift_count + 1;
+        if (drift_count >= 16)
+        {
+            drift_count = 0;
+            f64 ddt = 16.0 / fs;
+            f64 sq = sqrt(ddt) * 0.25 * 1.7320508075688772;   // uniform with unit variance
+            drift_pitch = drift_pitch - drift_pitch * (ddt / 25.0) + noise_f() * sq;
+            drift_cut = drift_cut - drift_cut * (ddt / 25.0) + noise_f() * sq;
+            drift_pitch = fmin(3.0, fmax(-3.0, drift_pitch));
+            drift_cut = fmin(3.0, fmax(-3.0, drift_cut));
+        }
+
+        // Knob mappings, as in the ATEK303 VCV module with the Circuit model.
         f64 tune_hz = 400.0 + 80.0 * fmin(1.0, fmax(0.0, k_tuning));
         f64 cutoff_hz = 314.0 * pow(2394.0 / 314.0, fmin(1.0, fmax(0.0, k_cutoff)));
-        f64 res_raw = fmin(1.0, fmax(0.0, k_res));
-        f64 res_skewed = (1.0 - exp(-3.0 * res_raw)) / 0.950212931632136;
+        cutoff_hz = cutoff_hz * (1.0 + drift_cut * 0.015);
+        f64 res_lin = fmin(1.0, fmax(0.0, k_res));            // linear pot (VR4, type B)
         f64 e_knob = fmin(1.0, fmax(0.0, k_env));
-        f64 env_mod_pct = 100.0 * e_knob * e_knob * e_knob;    // log taper (pot A)
-        f64 decay_ms = 200.0 * pow(10.0, fmin(1.0, fmax(0.0, k_decay)));
-        f64 accent_amt = fmin(1.0, fmax(0.0, k_accent));
+        f64 env_mod_pct = 100.0 * e_knob * e_knob * e_knob;    // log taper (VR5, type A)
+        // Circuit decay range: T 200 ms - 2.5 s (100 % to 10 %), as a time constant.
+        f64 tau_min = 86.85889638065036;
+        f64 tau_max = 1085.7362047581296;
+        f64 decay_ms = tau_min * pow(tau_max / tau_min, fmin(1.0, fmax(0.0, k_decay)));
+        f64 accent_knob = fmin(1.0, fmax(0.0, k_accent));
         f64 blend = fmin(1.0, fmax(0.0, k_wave));
+
+        // Accent accumulators discharge.
+        accent_fast = accent_fast - accent_fast / (0.10 * fs);
+        accent_slow = accent_slow - accent_slow / (0.45 * fs);
 
         // ---- note requests ----
         if (request != 0)
@@ -214,8 +274,11 @@ component atek303_v1
                 key_now = (request_key).f64;
                 if (request_accent == 1)
                 {
-                    accent_gain = accent_amt;
-                    main_tau = 200.0;          // accent forces the minimum decay
+                    f64 build = 0.5 * accent_fast + 0.5 * accent_slow;
+                    accent_gain = fmin(1.0, accent_knob * (1.0 + 0.8 * build));
+                    accent_fast = fmin(1.0, accent_fast + 0.55);
+                    accent_slow = fmin(1.0, accent_slow + 0.55);
+                    main_tau = tau_min;        // accent shorts the pot: minimum decay
                     amp_release = 50.0;
                 }
                 else
@@ -247,8 +310,9 @@ component atek303_v1
                 key_now = (request_key).f64;
         }
 
-        // ---- pitch: leaky integrator on log(frequency) ----
-        f64 target = log(tune_hz) + (key_now - 69.0) / 12.0 * 0.6931471805599453;
+        // ---- pitch: leaky integrator on log(frequency), plus DAC error and drift (cents) ----
+        f64 cents = dac_error(key_now) * 1.5 + drift_pitch * 1.5;
+        f64 target = log(tune_hz) + (key_now - 69.0 + 0.01 * cents) / 12.0 * 0.6931471805599453;
         f64 c_slide = exp(-1.0 / (fs * 0.001 * 120.0));
         slew = target + c_slide * (slew - target);
         f64 freq = exp(slew);
@@ -271,7 +335,6 @@ component atek303_v1
         f64 t1 = env_scaler * (main_env - env_offset);
         f64 t2 = accent_gain * rc2;
         f64 inst_cutoff = cutoff_hz * pow(2.0, t1 + t2);
-        inst_cutoff = fmin(20000.0, fmax(200.0, inst_cutoff));
 
         // ---- amplitude envelope (attack 0, decay 1230 ms, sustain 0) ----
         f64 amp_inc = 1000.0 / fs;
@@ -317,19 +380,26 @@ component atek303_v1
             amp = y;
         }
 
-        // ---- TB-303 filter coefficients at the oversampled rate ----
-        f64 wc = 2.0 * pi * inst_cutoff / fs4;
-        f64 fx = wc * 0.7071067811865476 / (2.0 * pi);
+        // ---- ATEK filter coefficients at the oversampled rate ----
+        f64 fc = fmax(10.0, fmin(fmin(inst_cutoff, 14000.0), 0.45 * fs4));
+        f64 fx = fc / (fs4 * 1.4142135623730951);
         f64 fb0 = (0.00045522346 + 6.1922189 * fx) / (1.0 + 12.358354 * fx + 4.4156345 * (fx * fx));
-        f64 fk = fx * (fx * (fx * (fx * (fx * (fx + 7198.6997) - 5837.7917) - 476.47308) + 614.95611) + 213.87126) + 16.998792;
-        f64 fg = fk * 0.058823529411764705;
-        fg = (fg - 1.0) * res_skewed + 1.0;
-        fg = fg * (1.0 + res_skewed);
-        fk = fk * res_skewed;
-
-        // One-pole coefficients.
-        f64 x_hp1 = exp(-2.0 * pi * 44.486 / fs4);
+        f64 k_scale = fx * (fx * (fx * (fx * (fx * (fx + 7198.6997) - 5837.7917) - 476.47308) + 614.95611) + 213.87126) + 16.998792;
+        f64 g_comp = k_scale / 17.0;
+        g_comp = (g_comp - 1.0) * res_lin + 1.0;
+        g_comp = g_comp * (1.0 + res_lin);
+        f64 fk = fmin(k_scale * res_lin, 40.0);
         f64 x_fb = exp(-2.0 * pi * 150.0 / fs4);
+
+        // ---- ATEK oscillator coefficients (4x) ----
+        f64 a_lp_saw = 1.0 - exp(-2.0 * pi * fmin(7957.747154594767, 0.45 * fs4) / fs4);   // 20 us reset
+        f64 a_lp_sq = 1.0 - exp(-2.0 * pi * fmin(31830.98861837907, 0.45 * fs4) / fs4);   // 5 us slew
+        f64 a_hp_saw = exp(-2.0 * pi * 15.0 / fs4);    // saw droop 15 Hz
+        f64 a_hp_sq = exp(-2.0 * pi * 60.0 / fs4);     // square droop 60 Hz
+        f64 pulse_width = 0.44;
+
+        // Other one-pole coefficients.
+        f64 x_hp1 = exp(-2.0 * pi * 44.486 / fs4);
         f64 x_hp2 = exp(-2.0 * pi * 24.167 / fs);
         f64 t_ap = tan_f(pi * 14.008 / fs);
         f64 x_ap = (t_ap - 1.0) / (t_ap + 1.0);
@@ -351,21 +421,31 @@ component atek303_v1
         f64 aa2_b1 = (1.0 - cs_aa) * s2;
         f64 aa2_b0 = 0.5 * aa2_b1;
 
-        f64 dt = fmin(0.45, freq / fs4);
+        f64 dt = fmax(0.0, fmin(0.45, freq / fs4));
         f64 sig = 0.0;
         for (i32 i = 0; i < 4; ++i)
         {
-            // Oscillator: Open303's 303 saw, and its tanh-shaped square, band-limited by polyBLEP.
+            // ATEK oscillator: capacitor ramp and comparator square, polyBLEP edges,
+            // rounded reset corner / finite slew, and AC-coupling droop.
             phase = phase + dt;
             if (phase >= 1.0)
                 phase = phase - 1.0;
             f64 saw = (2.0 * phase - 1.0) - poly_blep(phase, dt);
-            f64 pb = phase + 0.5;
-            if (pb >= 1.0)
-                pb = pb - 1.0;
-            f64 saw_b = (2.0 * pb - 1.0) - poly_blep(pb, dt);
-            f64 square = -tanh_f(69.98 * saw_b + 4.37);
-            f64 osc = (1.0 - blend) * saw + blend * 0.5 * square;
+            f64 sqv = -1.0;
+            if (phase < pulse_width)
+                sqv = 1.0;
+            sqv = sqv + poly_blep(phase, dt);
+            f64 t_fall = phase + (1.0 - pulse_width);
+            if (t_fall >= 1.0)
+                t_fall = t_fall - 1.0;
+            sqv = sqv - poly_blep(t_fall, dt);
+            lp_saw = lp_saw + a_lp_saw * (saw - lp_saw);
+            lp_sq = lp_sq + a_lp_sq * (sqv - lp_sq);
+            hp_saw_y = a_hp_saw * (hp_saw_y + lp_saw - hp_saw_x);
+            hp_saw_x = lp_saw;
+            hp_sq_y = a_hp_sq * (hp_sq_y + lp_sq - hp_sq_x);
+            hp_sq_x = lp_sq;
+            f64 osc = 0.484 * (hp_saw_y + blend * (hp_sq_y - hp_saw_y));
             f64 x = -osc;
 
             // Pre-filter highpass, 44.5 Hz.
@@ -373,17 +453,17 @@ component atek303_v1
             hp1_x1 = x;
             hp1_y1 = hp;
 
-            // TB-303 filter (mystran & kunn), feedback through a 150 Hz highpass.
-            f64 fb_in = fk * shape(y4);
-            f64 fb = 0.5 * (1.0 + x_fb) * (fb_in - fb_x1) + x_fb * fb_y1;
-            fb_x1 = fb_in;
-            fb_y1 = fb;
-            f64 y0 = hp - fb;
-            y1 = y1 + 2.0 * fb0 * (y0 - y1 + y2);
-            y2 = y2 + fb0 * (y1 - 2.0 * y2 + y3);
-            y3 = y3 + fb0 * (y2 - 2.0 * y3 + y4);
-            y4 = y4 + fb0 * (y3 - 2.0 * y4);
-            f64 filtered = 2.0 * fg * y4;
+            // ATEK diode ladder: a diode in every cell, first cell 33/18 faster, drive x2,
+            // feedback through a 150 Hz highpass.
+            f64 fb = fk * diode(y4);
+            fb_hp = x_fb * (fb_hp + fb - fb_prev);
+            fb_prev = fb;
+            f64 xin = 2.0 * hp - fb_hp;
+            y1 = y1 + 1.8333333333333333 * fb0 * diode(xin - y1 + y2);
+            y2 = y2 + fb0 * diode(y1 - 2.0 * y2 + y3);
+            y3 = y3 + fb0 * diode(y2 - 2.0 * y3 + y4);
+            y4 = y4 + fb0 * diode(y3 - 2.0 * y4);
+            f64 filtered = 2.0 * g_comp * y4;
 
             // Anti-alias lowpass.
             f64 a = aa1_b0 * filtered + aa1_b1 * aa1_x1 + aa1_b0 * aa1_x2 + aa1_a1 * aa1_y1 + aa1_a2 * aa1_y2;
@@ -417,14 +497,14 @@ component atek303_v1
         n_x2 = n_x1; n_x1 = hp2;
         n_y2 = n_y1; n_y1 = notch;
 
-        // Engine level -6 dB (as in the VCV module), then the Volume knob (0.5 = engine level).
-        f64 result = notch * amp * 0.5011872336272722 * 2.0 * k_volume;
-        out = (result).f32;
-    }
+        // OTA BA662A headroom (soft), the VCA, engine level -6 dB.
+        f64 ota = 0.6 * tanh_f(notch / 0.6);
+        f64 core = ota * amp * 0.5011872336272722;
 
-    f64 sinh_f(f64 x)
-    {
-        f64 ex = exp(x);
-        return 0.5 * (ex - 1.0 / ex);
+        // Output stage saturation (strong), on the 5 V scale of the VCV module.
+        f64 volts = 5.0 * core;
+        volts = 4.5 * tanh_f(volts / 4.5);
+        f64 result = 0.2 * volts * 2.0 * k_volume;
+        out = (result).f32;
     }
 }
