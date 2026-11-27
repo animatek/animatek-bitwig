@@ -1,0 +1,17 @@
+{
+  "manifest_version": 3,
+  "package_type": "component",
+  "component": {
+    "id": "animatek",
+    "name": "Animatek",
+    "version": "0.1.0",
+    "author": "Animatek",
+    "description": "Pizarras, azul #2C7FFF y ámbar #FD9A00: la paleta de animatek.net y de los módulos de VCV.",
+    "parent": "bte-theme-loader",
+    "group": "themes",
+    "interface_version": "1"
+  },
+  "resources": {
+    "theme": { "kind": "file", "path": "resources/animatek.bte" }
+  }
+}

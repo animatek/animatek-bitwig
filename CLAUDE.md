@@ -28,6 +28,7 @@ Por eso hay una 6.1.7 aparte, sacada del .deb de bitwig.com sin instalar nada en
 | `apps/` | `Patchbay-Launcher/` (0.9.7) y `BML-<ver>-linux/` (Patchbay a pelo). Bajados de sus releases. | no |
 | `terceros/` | Clones de referencia: `Patchbay` (loader, modkit, guia en `docs/sdk/`), `Mods`, `patchbay-launcher`, `polarity/bitwig-mods` y `polarity/bitwig-devices`. | no |
 | `mods/` | Nuestros mods (cuando los haya). | si |
+| `temas/animatek/` | Tema **Animatek** (paleta de la web y de VCV). Se retoca en `generar.py` y `./instalar.sh` lo genera y lo copia a `components/animatek` de la Patchbay activa; luego reiniciar Bitwig desde Patchbay. | si |
 | `devices/` | Nuestros `.bwdevice` / `.bwmodulator` / `.bwmodule`. | si |
 
 ## Arrancar
