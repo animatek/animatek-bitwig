@@ -389,7 +389,7 @@ def lab_panel(ref_of):
         items += [label(f"popup {i}", x, 0, 32), popup(wave, "", x, 3, 32, style=i, color=1),
                   label(f"popup {i} / label 1", x, 9, 32),
                   popup(wave, "", x, 12, 32, style=i, label_style=1, color=1)]
-    for st in range(8):
+    for st in range(4):   # Bitwig accepts knob_style 0-3 only (4 is "Unknown enum value")
         kn = knob(ref_of["CUTOFF"], f"knob {st}", "", 2 + st * 20, 18, color=1)
         kn["fields"]["knob_style#7055"] = v("Byte", st)
         items.append(kn)
