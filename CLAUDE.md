@@ -97,6 +97,16 @@ borrar y deshacer. Edita el `layout.json` del device, del que `document.py` cons
 "Guardar y construir" ademas corre `build.py`. Despues, reiniciar Bitwig desde Patchbay.
 Los estilos y colores validos estan en `document.py` (POPUP_HEADER, KNOB_MAIN...).
 
+## Piezas nuevas: primero en el Lab
+
+Bitwig reabre al arrancar el ultimo proyecto (el «303» de Javier, con ATEK303 dentro). Un campo
+mal formado en el documento no da un error amable: **Bitwig se cierra al arrancar** y no se
+puede abrir (2026-11-27, `display_settings` del modulation_source_atom, que va «por pantalla»).
+Por eso todo elemento con campos sin confirmar se prueba en el **Lab** (`build.py --lab`), que
+solo se carga cuando se inserta a mano, y en ATEK303 se deja en `parked` dentro de layout.json
+hasta que funcione. Si aun asi Bitwig no arranca: el error esta en `~/.BitwigStudio/log/BitwigStudio.log`
+(buscar «Error loading device contents» y «fatal»).
+
 ## Reglas
 
 - **Nunca** entra en Git nada de Bitwig: ni `bitwig.jar`, ni clases descompiladas, ni mapas.
