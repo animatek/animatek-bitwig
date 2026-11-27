@@ -23,6 +23,15 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 BLUEPRINT = REPO / "terceros/bitwig-devices-blueprint"
 PORT = 4310
+# Bitwig's own icons (SVG files of the installation), shown in the editor's icon picker.
+ICONS = Path.home() / "Bitwig-Studio-6.1.7/opt/bitwig-studio/resources/icons"
+
+
+def icon_names() -> list[str]:
+    """Every icon as Bitwig names it in panels: its path under resources/icons, without .svg."""
+    if not ICONS.is_dir():
+        return []
+    return sorted(str(p.relative_to(ICONS).with_suffix("")) for p in ICONS.rglob("*.svg"))
 
 
 def load_parameters(workspace: Path) -> list[dict]:
@@ -60,6 +69,16 @@ def make_handler(workspace: Path, parameters: list[dict]):
                 self.send(200, page.read_bytes(), "text/html; charset=utf-8")
             elif self.path == "/api/layout":
                 self.send(200, layout_file.read_bytes())
+            elif self.path == "/api/icons":
+                self.send(200, json.dumps(icon_names()).encode())
+            elif self.path.startswith("/icon/"):
+                from urllib.parse import unquote
+                name = unquote(self.path[len("/icon/"):])
+                path = (ICONS / f"{name}.svg").resolve()
+                if ICONS.resolve() in path.parents and path.is_file():
+                    self.send(200, path.read_bytes(), "image/svg+xml")
+                else:
+                    self.send(404, b'{"error": "no such icon"}')
             elif self.path == "/api/params":
                 self.send(200, json.dumps({"device": workspace.name, "params": parameters}).encode())
             else:

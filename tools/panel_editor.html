@@ -54,6 +54,15 @@
             place-items: center; font-size: 12px; color: #000; font-weight: 700; }
   .swatch.on { border-color: #fff; }
   .hint { color: var(--muted); font-size: 14px; margin-top: 12px; line-height: 1.5; }
+  #picker { position: fixed; inset: 0; background: #000A; display: none; z-index: 50; }
+  #picker .box { position: absolute; inset: 40px 8vw; background: #161B25; border: 1px solid var(--border);
+                 border-radius: 12px; display: flex; flex-direction: column; padding: 14px; gap: 10px; }
+  #picker .grid { overflow: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 8px; }
+  #picker .ic { background: #1E2533; border: 1px solid var(--border); border-radius: 8px; padding: 8px; cursor: pointer;
+                display: flex; flex-direction: column; align-items: center; gap: 6px; font-size: 12px; color: var(--muted);
+                word-break: break-all; text-align: center; }
+  #picker .ic:hover { border-color: var(--sel); color: var(--text); }
+  #picker .ic img { width: 28px; height: 28px; filter: invert(1) brightness(1.4); }
   kbd { background: #2A3142; border-radius: 4px; padding: 1px 5px; font-size: 13px; }
 </style>
 </head>
@@ -78,6 +87,14 @@
   <div id="stagewrap"><div id="stage" class="grid"></div></div>
   <aside id="inspector"></aside>
 </main>
+<div id="picker"><div class="box">
+  <div style="display:flex;gap:10px;align-items:center">
+    <strong style="font-size:17px">Iconos de Bitwig</strong>
+    <input id="pickq" placeholder="Buscar (power, phase, keytrack, envelope…)" style="flex:1">
+    <button id="pickclose">Cerrar</button>
+  </div>
+  <div id="pickgrid" class="grid"></div>
+</div></div>
 <script>
 "use strict";
 // Bitwig's panel palette (index -> colour), as seen in Bitwig 6.1.7.
@@ -145,9 +162,10 @@ function itemHTML(it, w, h) {
     case "popup": return `<span style="color:${col}">${p?.choices?.[0] || "—"}</span><span style="color:${col}">▾</span>`;
     case "field": return `<span style="color:${col}">0.00</span>`;
     case "buttons": return (p?.choices || ["A", "B"]).map((c, i) => `<span class="${i === 0 ? "on" : ""}">${c}</span>`).join("");
-    case "toggle": return `<span>${it.icon ? "◆ " : ""}${it.title || (it.icon ? "" : p?.title || "Toggle")}</span>`;
+    case "toggle": return (it.icon ? `<img src="/icon/${encodeURI(it.icon)}" style="height:80%;filter:invert(1) brightness(1.4)">` : "") +
+      `<span>${it.title || (it.icon ? "" : p?.title || "Toggle")}</span>`;
     case "chain": return `<span>${it.chain === "NOTE_FX" ? "Note FX" : "FX"}</span>`;
-    case "icon": return `<span title="${it.icon}" style="font-size:calc(var(--z)*2px);color:#C9CED8">◆ ${String(it.icon).split("/").pop()}</span>`;
+    case "icon": return `<img src="/icon/${encodeURI(it.icon)}" alt="${it.icon}" style="width:100%;height:100%;object-fit:contain;filter:invert(1) brightness(1.4)" onerror="this.replaceWith(Object.assign(document.createElement('span'),{textContent:'?',style:'color:#E5484D'}))">`;
     case "modsource": return `<span style="color:${PALETTE[1]};font-weight:700;font-size:calc(var(--z)*2.6px)">●→</span>`;
     case "drawing":
       return `<svg width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="none">
@@ -271,10 +289,16 @@ function inspector() {
     if (t.type === "knob") box.appendChild(selectField("Tamaño", t.size || 2, [[1, "1 pequeño"], [2, "2 mediano"], [3, "3 grande"]], (v) => (t.size = Number(v))));
     if (t.type === "label") box.appendChild(field("Texto", t.text, (v) => (t.text = v), "text"));
     if (["icon", "toggle"].includes(t.type)) {
-      box.appendChild(field("Icono", t.icon ?? "", (v) => { if (v) t.icon = v; else delete t.icon; }, "text"));
-      const hint = document.createElement("div"); hint.className = "hint";
-      hint.textContent = "Iconos de Bitwig, p. ej. device/power_on, device/retrigger, device/phase, device/keytrack, device/envelope_analog, device/arp_up_down";
-      box.appendChild(hint);
+      const l = document.createElement("label"); l.innerHTML = "<span>Icono</span>";
+      const b = document.createElement("button");
+      b.innerHTML = t.icon ? `<img src="/icon/${encodeURI(t.icon)}" style="height:18px;vertical-align:middle;filter:invert(1)"> ${t.icon}` : "Elegir icono…";
+      b.onclick = () => openPicker((name) => { snapshot(); t.icon = name; render(); });
+      l.appendChild(b); box.appendChild(l);
+      if (t.icon && t.type === "toggle") {
+        const rm = document.createElement("button"); rm.textContent = "Quitar icono";
+        rm.onclick = () => { snapshot(); delete t.icon; render(); };
+        box.appendChild(rm);
+      }
     }
     if (["knob", "toggle"].includes(t.type)) box.appendChild(field("Título", t.title ?? "", (v) => { if (v) t.title = v; else delete t.title; }, "text"));
     if (t.param !== undefined) {
@@ -368,6 +392,25 @@ window.addEventListener("keydown", (e) => {
     render();
   }
 });
+
+let ICON_LIST = null, pickCallback = null;
+async function openPicker(cb) {
+  pickCallback = cb;
+  if (!ICON_LIST) ICON_LIST = await fetch("/api/icons").then((r) => r.json());
+  $("picker").style.display = "block";
+  $("pickq").value = "";
+  drawPicker("");
+  $("pickq").focus();
+}
+function drawPicker(q) {
+  const words = q.toLowerCase().split(/\s+/).filter(Boolean);
+  const list = ICON_LIST.filter((n) => words.every((w) => n.toLowerCase().includes(w))).slice(0, 400);
+  $("pickgrid").innerHTML = list.map((n) => `<div class="ic" data-n="${n}"><img loading="lazy" src="/icon/${encodeURI(n)}">${n}</div>`).join("")
+    || `<div class="hint">Nada con «${q}».</div>`;
+  $("pickgrid").querySelectorAll(".ic").forEach((d) => d.onclick = () => { $("picker").style.display = "none"; pickCallback(d.dataset.n); });
+}
+$("pickq").oninput = (e) => drawPicker(e.target.value);
+$("pickclose").onclick = () => { $("picker").style.display = "none"; };
 
 async function save(build) {
   status(build ? "Guardando y construyendo…" : "Guardando…");
