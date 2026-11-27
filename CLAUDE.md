@@ -70,6 +70,13 @@ SkSL para el panel y el compilador del propio `bitwig.jar` de la 6.1.7. Montado 
   al Nitro, como en la 6.1.7 hacen los instrumentos de polarity; nada de nucleos opacos). `build.py`
   compila y copia a `build/devices/`. **v0 probado en Bitwig el 2026-11-27**: le llegan notas y el
   volumen va. Sintaxis de eventos: `event_inport NoteEvent note_in { if (note_in.type == note_in.NOTE_ON) ... note_in.key }`.
+- **Comprobar sin abrir Bitwig:** `tools/nitro-check.sh <fuente.nitro>` corre el analisis
+  semantico de Bitwig (da OK o el error exacto). Pasarlo siempre antes de probar en vivo.
+- **Trampas de Nitro 6.1.7** (aprendidas a mano): no hay `tan`, `tanh`, `mix` ni `clamp`
+  (compilan pero fallan); una constante que Nitro calcula solo (`log(2.0)`, `1.0 - exp(-3.0)`)
+  sale `f32` y choca con `f64`: escribirla ya calculada; salida estereo con `out = s;` (no
+  `<s, s>`); la velocidad de la nota es `note_in.v` (0-1); campos de `NoteEvent`: `type`,
+  `channel`, `key`, `v`; constantes `NOTE_ON`, `NOTE_OFF`, `NOTE_CHOKE`. `f64` y arrays van bien.
 - Primer objetivo: ATEK303 como instrumento nativo. La secuencia vive en el clip: velocidad >= 100
   es accent y notas solapadas son slide (asi lo decide Open303, `rosic_Open303.cpp:193-195`).
 
