@@ -1,0 +1,8 @@
+# Codigo y binarios de otros: se clonan o se bajan, no entran en Git
+terceros/
+apps/
+# Nada de Bitwig (jars, mapas con su codigo) ni nada construido
+*.jar
+*.deb
+build/
+maps/
