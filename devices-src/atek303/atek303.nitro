@@ -1,70 +1,430 @@
-component atek303_v0
+component atek303_v1
 {
-    // ATEK303 v0: a band-limited saw that follows the last note played, with a volume control.
-    // The 303 engine (filter, envelopes, accent, slide) comes in later versions.
+    // ATEK303 for Bitwig: the Open303 engine (Robin Schmidt, MIT) with the tweaks of the
+    // ATEK303 VCV module, written in Nitro. Mono, last-note priority:
+    //   - a note that starts while another is held slides (pitch-domain glide, 120 ms);
+    //   - velocity >= 100 (0.787) is an accent: shorter filter decay, accent sweep, louder.
+    // Everything runs in f64; the oscillator and the TB-303 filter run 4x oversampled.
+    // Bitwig 6.1 Nitro has no tan/tanh/mix/clamp: they are written out below.
 
-    i32 held = 0;
-    f32 key = 36.0;
-    f32 gate = 0.0;
-    f32 amp = 0.0;
-    f32 phase = 0.0;
+    // ---- note state (written by the event handler, applied in process) ----
+    i32[16] held;
+    i32 held_count = 0;
+    i32 request = 0;          // 1 trigger, 2 slide, 3 release, 4 slide back
+    i32 request_key = 36;
+    i32 request_accent = 0;
 
     event_inport NoteEvent note_in
     {
         if (note_in.type == note_in.NOTE_ON)
         {
-            key = (note_in.key).f32;
-            held = held + 1;
-            gate = 1.0;
+            i32 key = note_in.key;
+            remove_key(key);
+            if (held_count == 0)
+                request = 1;
+            else
+                request = 2;
+            if (held_count < 16)
+            {
+                held[held_count] = key;
+                held_count = held_count + 1;
+            }
+            request_key = key;
+            request_accent = 0;
+            if (note_in.v >= 0.787)
+                request_accent = 1;
         }
         else if (note_in.type == note_in.NOTE_OFF)
         {
-            held = held - 1;
-            if (held <= 0)
+            remove_key(note_in.key);
+            if (held_count == 0)
             {
-                held = 0;
-                gate = 0.0;
+                if (request == 0 || request >= 3)
+                    request = 3;
+            }
+            else if (request == 0)
+            {
+                request = 4;
+                request_key = held[held_count - 1];
             }
         }
     }
 
+    audio_inport f32 tuning = 0.5;
+    audio_inport f32 cutoff = 0.35;
+    audio_inport f32 resonance = 0.5;
+    audio_inport f32 env_mod = 0.5;
+    audio_inport f32 decay = 0.4;
+    audio_inport f32 accent = 0.5;
+    audio_inport f32 waveform = 0.0;
     audio_inport f32 volume = 0.5;
 
     audio_outport out;
 
-    f32 poly_blep(f32 t, f32 dt)
+    // ---- engine state ----
+    i32 idle = 1;
+    f64 key_now = 36.0;
+    f64 slew = 0.0;            // log(frequency), slid towards the note
+    f64 accent_gain = 0.0;
+    f64 main_tau = 400.0;      // ms, set at trigger
+    f64 main_env = 0.0;
+    f64 rc2 = 0.0;
+    i32 amp_on = 0;
+    f64 amp_time = 0.0;        // ms since note on
+    f64 amp_out = 0.0;
+    f64 amp_release = 1.0;     // ms
+    f64 phase = 0.5;
+
+    // TB-303 filter (4x)
+    f64 y1 = 0.0;
+    f64 y2 = 0.0;
+    f64 y3 = 0.0;
+    f64 y4 = 0.0;
+    f64 fb_x1 = 0.0;
+    f64 fb_y1 = 0.0;
+    // one-pole highpass before the filter (4x)
+    f64 hp1_x1 = 0.0;
+    f64 hp1_y1 = 0.0;
+    // anti-alias lowpass before decimation (4x): two biquads
+    f64 aa1_x1 = 0.0;
+    f64 aa1_x2 = 0.0;
+    f64 aa1_y1 = 0.0;
+    f64 aa1_y2 = 0.0;
+    f64 aa2_x1 = 0.0;
+    f64 aa2_x2 = 0.0;
+    f64 aa2_y1 = 0.0;
+    f64 aa2_y2 = 0.0;
+    // after decimation (1x)
+    f64 ap_x1 = 0.0;
+    f64 ap_y1 = 0.0;
+    f64 hp2_x1 = 0.0;
+    f64 hp2_y1 = 0.0;
+    f64 n_x1 = 0.0;
+    f64 n_x2 = 0.0;
+    f64 n_y1 = 0.0;
+    f64 n_y2 = 0.0;
+    f64 dc_x1 = 0.0;
+    f64 dc_x2 = 0.0;
+    f64 dc_y1 = 0.0;
+    f64 dc_y2 = 0.0;
+
+    void remove_key(i32 key)
+    {
+        i32 j = 0;
+        for (i32 i = 0; i < held_count; ++i)
+        {
+            if (held[i] != key)
+            {
+                held[j] = held[i];
+                j = j + 1;
+            }
+        }
+        held_count = j;
+    }
+
+    f64 tan_f(f64 x)
+    {
+        return sin(x) / cos(x);
+    }
+
+    f64 tanh_f(f64 x)
+    {
+        // Pade approximation, exact enough for the 303 square shaper; saturates beyond +-3.
+        if (x > 3.0)
+            return 1.0;
+        if (x < -3.0)
+            return -1.0;
+        f64 x2 = x * x;
+        return x * (27.0 + x2) / (27.0 + 9.0 * x2);
+    }
+
+    f64 poly_blep(f64 t, f64 dt)
     {
         if (t < dt)
         {
-            f32 x = t / dt;
+            f64 x = t / dt;
             return x + x - x * x - 1.0;
         }
         if (t > 1.0 - dt)
         {
-            f32 x = (t - 1.0) / dt;
+            f64 x = (t - 1.0) / dt;
             return x * x + x + x + 1.0;
         }
         return 0.0;
     }
 
+    f64 shape(f64 x)
+    {
+        f64 c = x;
+        if (c > 1.4142135623730951)
+            c = 1.4142135623730951;
+        if (c < -1.4142135623730951)
+            c = -1.4142135623730951;
+        return c - c * c * c / 6.0;
+    }
+
+    void reset_voice()
+    {
+        phase = 0.5;
+        y1 = 0.0; y2 = 0.0; y3 = 0.0; y4 = 0.0;
+        fb_x1 = 0.0; fb_y1 = 0.0;
+        hp1_x1 = 0.0; hp1_y1 = 0.0;
+        aa1_x1 = 0.0; aa1_x2 = 0.0; aa1_y1 = 0.0; aa1_y2 = 0.0;
+        aa2_x1 = 0.0; aa2_x2 = 0.0; aa2_y1 = 0.0; aa2_y2 = 0.0;
+        ap_x1 = 0.0; ap_y1 = 0.0;
+        hp2_x1 = 0.0; hp2_y1 = 0.0;
+        n_x1 = 0.0; n_x2 = 0.0; n_y1 = 0.0; n_y2 = 0.0;
+        dc_x1 = 0.0; dc_x2 = 0.0; dc_y1 = 0.0; dc_y2 = 0.0;
+    }
+
     process
     {
-        f32 level = fmin(1.0, fmax(0.0, volume));
-        f32 rate = (EC.samplerate).f32;
-        f32 freq = 440.0 * pow(2.0, (key - 69.0) / 12.0);
-        f32 dt = fmin(0.45, freq / rate);
+        // Read every port once per sample.
+        f64 k_tuning = (tuning).f64;
+        f64 k_cutoff = (cutoff).f64;
+        f64 k_res = (resonance).f64;
+        f64 k_env = (env_mod).f64;
+        f64 k_decay = (decay).f64;
+        f64 k_accent = (accent).f64;
+        f64 k_wave = (waveform).f64;
+        f64 k_volume = (volume).f64;
 
-        phase = phase + dt;
-        if (phase >= 1.0)
-            phase = phase - 1.0;
+        f64 fs = (EC.samplerate).f64;
+        f64 fs4 = 4.0 * fs;
+        f64 pi = 3.141592653589793;
 
-        f32 saw = (2.0 * phase - 1.0) - poly_blep(phase, dt);
+        // Knob mappings, as in the ATEK303 VCV module.
+        f64 tune_hz = 400.0 + 80.0 * fmin(1.0, fmax(0.0, k_tuning));
+        f64 cutoff_hz = 314.0 * pow(2394.0 / 314.0, fmin(1.0, fmax(0.0, k_cutoff)));
+        f64 res_raw = fmin(1.0, fmax(0.0, k_res));
+        f64 res_skewed = (1.0 - exp(-3.0 * res_raw)) / 0.950212931632136;
+        f64 e_knob = fmin(1.0, fmax(0.0, k_env));
+        f64 env_mod_pct = 100.0 * e_knob * e_knob * e_knob;    // log taper (pot A)
+        f64 decay_ms = 200.0 * pow(10.0, fmin(1.0, fmax(0.0, k_decay)));
+        f64 accent_amt = fmin(1.0, fmax(0.0, k_accent));
+        f64 blend = fmin(1.0, fmax(0.0, k_wave));
 
-        // 2 ms one-pole on the gate so notes start and stop without clicks.
-        f32 k = 1.0 - exp(-1.0 / (0.002 * rate));
-        amp = amp + (gate - amp) * k;
+        // ---- note requests ----
+        if (request != 0)
+        {
+            i32 r = request;
+            request = 0;
+            if (r == 1 || r == 2)
+            {
+                key_now = (request_key).f64;
+                if (request_accent == 1)
+                {
+                    accent_gain = accent_amt;
+                    main_tau = 200.0;          // accent forces the minimum decay
+                    amp_release = 50.0;
+                }
+                else
+                {
+                    accent_gain = 0.0;
+                    main_tau = decay_ms;
+                    amp_release = 1.0;
+                }
+            }
+            if (r == 1)
+            {
+                if (idle == 1)
+                {
+                    reset_voice();
+                    idle = 0;
+                }
+                slew = log(tune_hz) + (key_now - 69.0) / 12.0 * 0.6931471805599453;
+                f64 c_main = exp(-1.0 / (0.001 * main_tau * fs));
+                main_env = 1.0 / c_main;
+                amp_time = 0.0;
+                amp_on = 1;
+            }
+            if (r == 3)
+            {
+                amp_on = 0;
+                amp_time = 1230.0 + 1000.0 / fs;
+            }
+            if (r == 4)
+                key_now = (request_key).f64;
+        }
 
-        f32 s = 0.5 * saw * amp * level;
-        out = <s, s>;
+        // ---- pitch: leaky integrator on log(frequency) ----
+        f64 target = log(tune_hz) + (key_now - 69.0) / 12.0 * 0.6931471805599453;
+        f64 c_slide = exp(-1.0 / (fs * 0.001 * 120.0));
+        slew = target + c_slide * (slew - target);
+        f64 freq = exp(slew);
+
+        // ---- filter envelope and accent sweep ----
+        main_env = main_env * exp(-1.0 / (0.001 * main_tau * fs));
+        f64 c_rc2 = exp(-1.0 / (fs * 0.001 * 15.0));
+        f64 rc2_in = 0.0;
+        if (accent_gain > 0.0)
+            rc2_in = main_env;
+        rc2 = rc2_in + c_rc2 * (rc2 - rc2_in);
+
+        // Measured env-mod mapping of Open303.
+        f64 e = 0.01 * env_mod_pct;
+        f64 c = log(cutoff_hz / 313.8152786059267) / 2.032088434607958;
+        f64 s_lo = 3.773996325111173 * e + 0.736965594166206;
+        f64 s_hi = 4.194548788411135 * e + 0.864344900642434;
+        f64 env_scaler = (1.0 - c) * s_lo + c * s_hi;
+        f64 env_offset = 0.048292930943553 * c + 0.294391201442418;
+        f64 t1 = env_scaler * (main_env - env_offset);
+        f64 t2 = accent_gain * rc2;
+        f64 inst_cutoff = cutoff_hz * pow(2.0, t1 + t2);
+        inst_cutoff = fmin(20000.0, fmax(200.0, inst_cutoff));
+
+        // ---- amplitude envelope (attack 0, decay 1230 ms, sustain 0) ----
+        f64 amp_inc = 1000.0 / fs;
+        f64 decay_coeff = 1.0 - exp(-1.0 / (fs * 0.001 * 1230.0));
+        if (amp_time <= 0.0)
+        {
+            amp_out = 1.0;
+            amp_time = amp_time + amp_inc;
+        }
+        else if (amp_time <= 1230.0)
+        {
+            amp_out = amp_out + decay_coeff * (0.0 - amp_out);
+            amp_time = amp_time + amp_inc;
+        }
+        else if (amp_on == 1)
+        {
+            amp_out = amp_out + decay_coeff * (0.0 - amp_out);
+        }
+        else
+        {
+            f64 release_coeff = 1.0 - exp(-1.0 / (fs * 0.001 * amp_release));
+            amp_out = amp_out + release_coeff * (0.0 - amp_out);
+            amp_time = amp_time + amp_inc;
+        }
+        f64 amp = amp_out;
+        if (amp_on == 1)
+            amp = amp + (0.45 + 4.0 * accent_gain) * main_env;
+
+        // De-clicker: 12 dB lowpass at 200 Hz, Q 0.707.
+        {
+            f64 w = 2.0 * pi * 200.0 / fs;
+            f64 sn = sin(w);
+            f64 cs = cos(w);
+            f64 alpha = sn / (2.0 * 0.7071067811865476);
+            f64 sc = 1.0 / (1.0 + alpha);
+            f64 a1 = 2.0 * cs * sc;
+            f64 a2 = (alpha - 1.0) * sc;
+            f64 b1 = (1.0 - cs) * sc;
+            f64 b0 = 0.5 * b1;
+            f64 y = b0 * amp + b1 * dc_x1 + b0 * dc_x2 + a1 * dc_y1 + a2 * dc_y2;
+            dc_x2 = dc_x1; dc_x1 = amp;
+            dc_y2 = dc_y1; dc_y1 = y;
+            amp = y;
+        }
+
+        // ---- TB-303 filter coefficients at the oversampled rate ----
+        f64 wc = 2.0 * pi * inst_cutoff / fs4;
+        f64 fx = wc * 0.7071067811865476 / (2.0 * pi);
+        f64 fb0 = (0.00045522346 + 6.1922189 * fx) / (1.0 + 12.358354 * fx + 4.4156345 * (fx * fx));
+        f64 fk = fx * (fx * (fx * (fx * (fx * (fx + 7198.6997) - 5837.7917) - 476.47308) + 614.95611) + 213.87126) + 16.998792;
+        f64 fg = fk * 0.058823529411764705;
+        fg = (fg - 1.0) * res_skewed + 1.0;
+        fg = fg * (1.0 + res_skewed);
+        fk = fk * res_skewed;
+
+        // One-pole coefficients.
+        f64 x_hp1 = exp(-2.0 * pi * 44.486 / fs4);
+        f64 x_fb = exp(-2.0 * pi * 150.0 / fs4);
+        f64 x_hp2 = exp(-2.0 * pi * 24.167 / fs);
+        f64 t_ap = tan_f(pi * 14.008 / fs);
+        f64 x_ap = (t_ap - 1.0) / (t_ap + 1.0);
+
+        // Anti-alias: 4th-order Butterworth at 0.45 fs, run at 4 fs.
+        f64 w_aa = 2.0 * pi * (0.45 * fs) / fs4;
+        f64 sn_aa = sin(w_aa);
+        f64 cs_aa = cos(w_aa);
+        f64 al1 = sn_aa / (2.0 * 0.5411961001461970);
+        f64 al2 = sn_aa / (2.0 * 1.3065629648763766);
+        f64 s1 = 1.0 / (1.0 + al1);
+        f64 s2 = 1.0 / (1.0 + al2);
+        f64 aa1_a1 = 2.0 * cs_aa * s1;
+        f64 aa1_a2 = (al1 - 1.0) * s1;
+        f64 aa1_b1 = (1.0 - cs_aa) * s1;
+        f64 aa1_b0 = 0.5 * aa1_b1;
+        f64 aa2_a1 = 2.0 * cs_aa * s2;
+        f64 aa2_a2 = (al2 - 1.0) * s2;
+        f64 aa2_b1 = (1.0 - cs_aa) * s2;
+        f64 aa2_b0 = 0.5 * aa2_b1;
+
+        f64 dt = fmin(0.45, freq / fs4);
+        f64 sig = 0.0;
+        for (i32 i = 0; i < 4; ++i)
+        {
+            // Oscillator: Open303's 303 saw, and its tanh-shaped square, band-limited by polyBLEP.
+            phase = phase + dt;
+            if (phase >= 1.0)
+                phase = phase - 1.0;
+            f64 saw = (2.0 * phase - 1.0) - poly_blep(phase, dt);
+            f64 pb = phase + 0.5;
+            if (pb >= 1.0)
+                pb = pb - 1.0;
+            f64 saw_b = (2.0 * pb - 1.0) - poly_blep(pb, dt);
+            f64 square = -tanh_f(69.98 * saw_b + 4.37);
+            f64 osc = (1.0 - blend) * saw + blend * 0.5 * square;
+            f64 x = -osc;
+
+            // Pre-filter highpass, 44.5 Hz.
+            f64 hp = 0.5 * (1.0 + x_hp1) * (x - hp1_x1) + x_hp1 * hp1_y1;
+            hp1_x1 = x;
+            hp1_y1 = hp;
+
+            // TB-303 filter (mystran & kunn), feedback through a 150 Hz highpass.
+            f64 fb_in = fk * shape(y4);
+            f64 fb = 0.5 * (1.0 + x_fb) * (fb_in - fb_x1) + x_fb * fb_y1;
+            fb_x1 = fb_in;
+            fb_y1 = fb;
+            f64 y0 = hp - fb;
+            y1 = y1 + 2.0 * fb0 * (y0 - y1 + y2);
+            y2 = y2 + fb0 * (y1 - 2.0 * y2 + y3);
+            y3 = y3 + fb0 * (y2 - 2.0 * y3 + y4);
+            y4 = y4 + fb0 * (y3 - 2.0 * y4);
+            f64 filtered = 2.0 * fg * y4;
+
+            // Anti-alias lowpass.
+            f64 a = aa1_b0 * filtered + aa1_b1 * aa1_x1 + aa1_b0 * aa1_x2 + aa1_a1 * aa1_y1 + aa1_a2 * aa1_y2;
+            aa1_x2 = aa1_x1; aa1_x1 = filtered;
+            aa1_y2 = aa1_y1; aa1_y1 = a;
+            f64 b = aa2_b0 * a + aa2_b1 * aa2_x1 + aa2_b0 * aa2_x2 + aa2_a1 * aa2_y1 + aa2_a2 * aa2_y2;
+            aa2_x2 = aa2_x1; aa2_x1 = a;
+            aa2_y2 = aa2_y1; aa2_y1 = b;
+            sig = b;
+        }
+
+        // Allpass 14 Hz, highpass 24 Hz.
+        f64 ap = x_ap * sig + ap_x1 - x_ap * ap_y1;
+        ap_x1 = sig;
+        ap_y1 = ap;
+        f64 hp2 = 0.5 * (1.0 + x_hp2) * (ap - hp2_x1) + x_hp2 * hp2_y1;
+        hp2_x1 = ap;
+        hp2_y1 = hp2;
+
+        // Band-reject at 7.5 Hz, 4.7 octaves wide.
+        f64 nw = 2.0 * pi * 7.5164 / fs;
+        f64 nsn = sin(nw);
+        f64 ncs = cos(nw);
+        f64 nal = nsn * sinh_f(0.5 * 0.6931471805599453 * 4.7 * nw / nsn);
+        f64 nsc = 1.0 / (1.0 + nal);
+        f64 n_a1 = 2.0 * ncs * nsc;
+        f64 n_a2 = (nal - 1.0) * nsc;
+        f64 n_b0 = nsc;
+        f64 n_b1 = -2.0 * ncs * nsc;
+        f64 notch = n_b0 * hp2 + n_b1 * n_x1 + n_b0 * n_x2 + n_a1 * n_y1 + n_a2 * n_y2;
+        n_x2 = n_x1; n_x1 = hp2;
+        n_y2 = n_y1; n_y1 = notch;
+
+        // Engine level -6 dB (as in the VCV module), then the Volume knob (0.5 = engine level).
+        f64 result = notch * amp * 0.5011872336272722 * 2.0 * k_volume;
+        out = (result).f32;
+    }
+
+    f64 sinh_f(f64 x)
+    {
+        f64 ex = exp(x);
+        return 0.5 * (ex - 1.0 / ex);
     }
 }

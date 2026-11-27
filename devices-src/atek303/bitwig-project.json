@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "projectId": "animatek.atek303",
   "name": "ATEK303",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "surface": "device",
   "target": {"bitwigVersion": "6.1.7", "platform": "linux-x86_64"},
   "identity": {
@@ -12,7 +12,7 @@
   },
   "presentation": {
     "type": "instrument",
-    "description": "303-style monophonic bass synth by Animatek. v0: saw oscillator following the last note.",
+    "description": "303-style monophonic bass synth by Animatek. The Open303 engine: TB-303 filter, envelopes, accent by velocity and slide by overlapping notes.",
     "tags": "303 acid bass mono animatek"
   },
   "sources": {"nitro": ["atek303.nitro"]},

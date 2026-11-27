@@ -11,7 +11,7 @@ import hashlib
 from devices.common.document_graph import iter_owned_objects
 from devices.common.panel_helpers import connection, grid_layout, obj, value as v
 
-PANEL_WIDTH, PANEL_HEIGHT = 40, 53
+PANEL_WIDTH, PANEL_HEIGHT = 76, 53
 
 
 def owned(*objects):
@@ -87,23 +87,40 @@ def note_event_port(name, index):
     return port
 
 
-def main_panel(volume_binding):
-    knob = obj(1687, "knob_panel_item", {
-        "layout_settings#6226": v("Object", grid_layout(9, 18, 21, 22)),
+# (name, preset id, nitro port, default, tooltip) in the order of atek303.nitro's inputs.
+PARAMETERS = [
+    ("Tuning", "TUNING", "tuning", 0.5, "Master tuning, 400-480 Hz for A4"),
+    ("Cutoff", "CUTOFF", "cutoff", 0.35, "Filter cutoff, 314-2394 Hz"),
+    ("Resonance", "RESONANCE", "resonance", 0.5, "Filter resonance"),
+    ("Env Mod", "ENV_MOD", "env_mod", 0.5, "Filter envelope depth (log taper, as the 303 pot)"),
+    ("Decay", "DECAY", "decay", 0.4, "Filter envelope decay, 200-2000 ms (accents force the minimum)"),
+    ("Accent", "ACCENT", "accent", 0.5, "Accent depth; notes with velocity 100+ are accented"),
+    ("Waveform", "WAVEFORM", "waveform", 0.0, "Saw (0) to square (1), blended"),
+    ("Volume", "VOLUME", "volume", 0.5, "Output level"),
+]
+
+KNOB_W, KNOB_H = 18, 22
+
+
+def knob(binding, title, tooltip, x, y):
+    return obj(1687, "knob_panel_item", {
+        "layout_settings#6226": v("Object", grid_layout(x, y, KNOB_W, KNOB_H)),
         "is_visible#6309": v("Bool", True), "is_enabled#6310": v("Bool", True),
-        "tooltip_text#6867": v("String", "Output level"),
-        "data_model#6220": volume_binding, "title#6241": v("String", "Volume"),
+        "tooltip_text#6867": v("String", tooltip),
+        "data_model#6220": binding, "title#6241": v("String", title),
         "knob_size#6223": v("Byte", 3), "show_value_popup#10569": v("Bool", True),
         "attribute_id#11012": v("Int16", 712), "knob_style#7055": v("Byte", 3),
         "label_color#7056": v("Int16", 6), "pie_color#7057": v("Byte", 6),
     })
-    label = obj(1683, "label_panel_item", {
-        "layout_settings#6226": v("Object", grid_layout(2, 4, 36, 6)),
-        "text#6219": v("String", "ATEK303"), "color#6520": v("Int16", 6),
-        "horizontal_alignment#6400": v("Byte", 1), "vertical_alignment#6401": v("Byte", 1),
-    })
+
+
+def main_panel(bindings):
+    items = []
+    for index, (binding, (title, _ident, _port, _default, tooltip)) in enumerate(zip(bindings, PARAMETERS)):
+        column, row = index % 4, index // 4
+        items.append(knob(binding, title, tooltip, 2 + column * KNOB_W, 4 + row * (KNOB_H + 2)))
     grid = obj(1681, "grid_panel_item", {
-        "layout_settings#6226": v("NullObject"), "items#6221": v("ObjectList", owned(label, knob)),
+        "layout_settings#6226": v("NullObject"), "items#6221": v("ObjectList", owned(*items)),
         "border_style#6228": v("Byte", 0), "title#6242": v("String", ""),
         "show_title#6243": v("Bool", False), "title_color#6522": v("Byte", 6),
         "brightness#6245": v("Byte", 0),
@@ -157,14 +174,17 @@ def document(project, binary):
         "oversampling#608": v("Byte", 0), "port_color#10378": v("Int16", 999),
         "name#3639": v("String", "In"), "preset_identifier#3640": v("String", "IN"),
     })
-    volume = decimal_parameter("Volume", "VOLUME", minimum=0.0, maximum=1.0, default=0.5)
+    params = [decimal_parameter(name, ident, minimum=0.0, maximum=1.0, default=default)
+              for name, ident, _port, default, _tip in PARAMETERS]
     dsp = obj(1721, "nitro_atom", {
-        "settings#6194": settings([wire(note_proxy), wire(volume)]),
+        "settings#6194": settings([wire(note_proxy), *(wire(p) for p in params)]),
         "channel_count#607": v("Byte", 0), "oversampling#608": v("Byte", 0),
         "fft_order#6567": v("Byte", 0),
         # Descriptors follow the port order in atek303.nitro.
         "nitro_inputs#15756": v("ObjectList", owned(
-            note_event_port("note_in", 0), nitro_port("volume", 1, 1, output=False),
+            note_event_port("note_in", 0),
+            *(nitro_port(port, index, 1, output=False)
+              for index, (_n, _i, port, _d, _t) in enumerate(PARAMETERS, 1)),
         )),
         "nitro_outputs#15757": v("ObjectList", owned(nitro_port("out", 0, 2, output=True))),
         "code_storage#10421": v("ByteArray", [0, *binary]),
@@ -173,12 +193,12 @@ def document(project, binary):
     })
     output_proxy = proxy(output=True)
     output_proxy["fields"]["settings#6194"] = settings([wire(dsp, 0)])
-    panel = main_panel(ref(volume))
+    panel = main_panel([ref(p) for p in params])
     identity = project["identity"]
     tags = project["presentation"]["tags"]
     body = obj(151, "device_contents", {
         "proxy_in_ports#177": v("ObjectList", owned(audio_proxy, note_proxy)),
-        "child_components#173": v("ObjectList", owned(audio_source, volume, dsp)),
+        "child_components#173": v("ObjectList", owned(audio_source, *params, dsp)),
         "panels#6213": v("ObjectList", owned(panel)),
         "proxy_out_ports#178": v("ObjectList", owned(output_proxy)),
         "device_UUID#385": v("Uuid", identity["uuid"]), "device_name#386": v("String", project["name"]),
