@@ -76,11 +76,13 @@ component atek303_v2
     audio_inport f32 fold_knob = 0.0;
     audio_inport f32 fine = 0.0;           // fine pitch, -100..+100 cents
     audio_inport f32 keytrack = 0.0;       // filter keyboard tracking: 0 none, 1 = 100 % (follows the notes)
+    audio_inport f32 noise_level = 0.0;    // white noise into the filter, with the oscillator
 
     audio_outport out;
     audio_outport f32<4> display;          // wave, shape, fold, sync ratio: for the panel drawing
 
     f64 slave = 0.0;
+    f64 noise_seed = 12345.0;
 
     f64 vel_now = 0.8;
     f64 sub_phase = 0.0;
@@ -263,6 +265,7 @@ component atek303_v2
         f64 k_sync = fmin(1.0, fmax(0.0, (sync_knob).f64));
         f64 k_fold = fmin(1.0, fmax(0.0, (fold_knob).f64));
         f64 k_key = fmin(1.0, fmax(0.0, (keytrack).f64));
+        f64 k_noise = fmin(1.0, fmax(0.0, (noise_level).f64));
         f64 k_volume = (volume).f64;
         f64 k_phase = fmin(1.0, fmax(0.0, (phase_knob).f64));
         bool k_retrig = retrig;
@@ -548,7 +551,15 @@ component atek303_v2
                 wave = tri;
             if (k_fold > 0.0)
                 wave = fold_f(wave * (1.0 + 4.0 * k_fold));
-            f64 osc = 0.484 * (wave + k_sub * sub);
+            // White noise (Park-Miller minimal standard generator, exact in f64).
+            f64 noise = 0.0;
+            if (k_noise > 0.0)
+            {
+                noise_seed = noise_seed * 16807.0;
+                noise_seed = noise_seed - floor(noise_seed / 2147483647.0) * 2147483647.0;
+                noise = 2.0 * noise_seed / 2147483647.0 - 1.0;
+            }
+            f64 osc = 0.484 * (wave + k_sub * sub + k_noise * noise);
             f64 x = -osc;
 
             // Pre-filter highpass, 44.5 Hz.

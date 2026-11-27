@@ -63,6 +63,7 @@ PARAMETERS = [
     ("dec", "Fold", "FOLD", "fold_knob", 0.0, "Wavefolder"),
     ("dec", "Fine", "FINE", "fine", 0.0, "Fine pitch, cents", -100.0, 100.0),
     ("dec", "Key", "KEYTRACK", "keytrack", 0.0, "Filter keyboard tracking: how much the notes move the cutoff"),
+    ("dec", "Noise", "NOISE", "noise_level", 0.0, "White noise into the filter, with the oscillator"),
 ]
 
 

@@ -62,6 +62,10 @@
   <h1 id="title">Panel Editor</h1>
   <button id="undo" title="Ctrl+Z">Deshacer</button>
   <button id="addsection">+ Sección</button>
+  <label style="display:flex;gap:6px;align-items:center;color:var(--muted)">Panel
+    <input id="pw" type="number" min="10" max="400" style="width:80px"> ×
+    <input id="ph" type="number" min="10" max="120" style="width:70px"></label>
+  <button id="fit" title="Ancho y alto justos para lo que hay">Ajustar al contenido</button>
   <label style="display:flex;gap:6px;align-items:center;color:var(--muted)">Zoom
     <input id="zoom" type="range" min="4" max="12" value="7" style="width:120px"></label>
   <label style="display:flex;gap:6px;align-items:center;color:var(--muted)">
@@ -91,6 +95,18 @@ const $ = (id) => document.getElementById(id);
 const stage = $("stage");
 const status = (msg) => { $("status").textContent = msg; };
 const param = (id) => params.find((p) => p.id === id);
+
+// Parameters bound by more than one element (a knob on SEMI moves the Semi field too).
+function duplicates() {
+  const count = {};
+  layout.sections.forEach((s) => s.items.forEach((it) => { if (it.param) count[it.param] = (count[it.param] || 0) + 1; }));
+  return new Set(Object.keys(count).filter((k) => count[k] > 1));
+}
+function unusedParam(kinds) {
+  const used = new Set();
+  layout.sections.forEach((s) => s.items.forEach((it) => it.param && used.add(it.param)));
+  return (params.find((p) => kinds.includes(p.kind) && !used.has(p.id)) || params.find((p) => kinds.includes(p.kind)))?.id;
+}
 
 function snapshot() { history.push(JSON.stringify(layout)); if (history.length > 100) history.shift(); }
 function undo() { if (history.length) { layout = JSON.parse(history.pop()); render(); status("Deshecho."); } }
@@ -145,6 +161,9 @@ function render() {
   stage.style.backgroundSize = `${Z}px ${Z}px`;
   stage.classList.toggle("grid", $("showgrid").checked);
   stage.innerHTML = "";
+  $("pw").value = layout.panel.width; $("ph").value = layout.panel.height;
+  const dup = duplicates();
+  if (dup.size) status("Ojo: " + [...dup].join(", ") + " está en más de un elemento (se mueven a la vez).");
   layout.sections.forEach((sec, si) => {
     const s = document.createElement("div");
     s.className = "section" + (sel && sel.s === si && sel.i == null ? " selected" : "");
@@ -159,6 +178,7 @@ function render() {
       Object.assign(el.style, { left: it.x * Z + "px", top: it.y * Z + "px", width: w * Z + "px", height: h * Z + "px" });
       el.innerHTML = itemHTML(it, w, h);
       el.title = `${it.type} ${it.param || it.text || it.chain || ""}  (${it.x}, ${it.y})`;
+      if (it.param && dup.has(it.param)) el.style.outline = "2px solid #E5484D";
       el.addEventListener("mousedown", (e) => { e.stopPropagation(); startDrag(e, si, ii); });
       if (sel && sel.s === si && sel.i === ii && it.type !== "knob") addHandle(el, si, ii);
       s.appendChild(el);
@@ -252,6 +272,11 @@ function inspector() {
     if (t.param !== undefined) {
       const kinds = { knob: ["dec"], field: ["dec"], popup: ["idx"], buttons: ["idx"], toggle: ["bool"] }[t.type] || [];
       box.appendChild(selectField("Parámetro", t.param, params.filter((p) => kinds.includes(p.kind)).map((p) => [p.id, `${p.title} (${p.id})`]), (v) => (t.param = v)));
+      if (duplicates().has(t.param)) {
+        const w = document.createElement("div"); w.className = "hint"; w.style.color = "#E5484D";
+        w.textContent = "Este parámetro ya lo usa otro elemento: los dos se moverán a la vez.";
+        box.appendChild(w);
+      }
     }
     if (STYLE_HINTS[t.type]) {
       box.appendChild(field("Estilo", t.style ?? 0, (v) => (t.style = v)));
@@ -285,7 +310,7 @@ function inspector() {
 
 function addItem() {
   const type = $("newtype").value;
-  const first = (kind) => params.find((p) => p.kind === kind)?.id;
+  const first = (kind) => unusedParam([kind]);
   const base = { type, x: 1, y: 1 };
   const extra = {
     knob: { param: first("dec"), size: 2, color: 6 }, label: { text: "Label", w: 12, h: 3, color: 6 },
@@ -344,6 +369,15 @@ async function save(build) {
   status(out.build_ok ? "Construido. Reinicia Bitwig desde Patchbay para verlo." : "La construcción falló:\n" + out.build_output);
 }
 
+$("pw").onchange = (e) => { snapshot(); layout.panel.width = Number(e.target.value); render(); };
+$("ph").onchange = (e) => { snapshot(); layout.panel.height = Number(e.target.value); render(); };
+$("fit").onclick = () => {
+  snapshot();
+  layout.panel.width = Math.max(...layout.sections.map((s) => s.x + s.w));
+  layout.panel.height = Math.max(...layout.sections.map((s) => s.y + s.h));
+  render();
+  status(`Panel ajustado: ${layout.panel.width} × ${layout.panel.height}.`);
+};
 $("undo").onclick = undo;
 $("save").onclick = () => save(false);
 $("build").onclick = () => save(true);
