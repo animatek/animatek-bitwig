@@ -270,8 +270,15 @@ def number_field(binding, tooltip, x, y, w, h=4, color=6, style=None):
     })
 
 
+def icon_file(name):
+    """Bitwig names its icons by path under resources/icons WITH the extension (its own code uses
+    "device/keytrack.svg"); without ".svg" the icon is silently not drawn."""
+    return name if name.endswith(".svg") else name + ".svg"
+
+
 def image(filename, x, y, w, h):
     """One of Bitwig's own icons, by name (resources/icons)."""
+    filename = icon_file(filename)
     return obj(1719, "image_panel_item", {
         "layout_settings#6226": v("Object", grid_layout(x, y, w, h)),
         "is_visible#6309": v("Bool", True), "filename#6258": v("String", filename),
@@ -388,7 +395,7 @@ def main_panel(ref_of, note_fx_ref, fx_ref, drawing_ref, mod_ref=None):
             t = toggle(binding, it.get("title", spec[1]), tooltip, x, y, w, h or 5)
             t["fields"]["style#6240"] = v("Byte", it.get("style", TOGGLE_TEXT))
             if it.get("icon"):
-                t["fields"]["icon_name#6239"] = v("String", it["icon"])
+                t["fields"]["icon_name#6239"] = v("String", icon_file(it["icon"]))
             return t
         if kind == "chain":
             return chain_display(chains[it["chain"]], x, y, w, h)
