@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "projectId": "animatek.atek303",
+  "name": "ATEK303",
+  "version": "0.1.0",
+  "surface": "device",
+  "target": {"bitwigVersion": "6.1.7", "platform": "linux-x86_64"},
+  "identity": {
+    "uuid": "53b11656-7cec-4319-b057-a3608597387f",
+    "creator": "Animatek",
+    "category": "Synth"
+  },
+  "presentation": {
+    "type": "instrument",
+    "description": "303-style monophonic bass synth by Animatek. v0: saw oscillator following the last note.",
+    "tags": "303 acid bass mono animatek"
+  },
+  "sources": {"nitro": ["atek303.nitro"]},
+  "output": {
+    "path": "build/linux-6.1.7/ATEK303.bwdevice",
+    "libraryPath": "ATEK303.bwdevice"
+  }
+}

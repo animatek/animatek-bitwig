@@ -1,0 +1,70 @@
+component atek303_v0
+{
+    // ATEK303 v0: a band-limited saw that follows the last note played, with a volume control.
+    // The 303 engine (filter, envelopes, accent, slide) comes in later versions.
+
+    i32 held = 0;
+    f32 key = 36.0;
+    f32 gate = 0.0;
+    f32 amp = 0.0;
+    f32 phase = 0.0;
+
+    event_inport NoteEvent note_in
+    {
+        if (note_in.type == note_in.NOTE_ON)
+        {
+            key = (note_in.key).f32;
+            held = held + 1;
+            gate = 1.0;
+        }
+        else if (note_in.type == note_in.NOTE_OFF)
+        {
+            held = held - 1;
+            if (held <= 0)
+            {
+                held = 0;
+                gate = 0.0;
+            }
+        }
+    }
+
+    audio_inport f32 volume = 0.5;
+
+    audio_outport out;
+
+    f32 poly_blep(f32 t, f32 dt)
+    {
+        if (t < dt)
+        {
+            f32 x = t / dt;
+            return x + x - x * x - 1.0;
+        }
+        if (t > 1.0 - dt)
+        {
+            f32 x = (t - 1.0) / dt;
+            return x * x + x + x + 1.0;
+        }
+        return 0.0;
+    }
+
+    process
+    {
+        f32 level = fmin(1.0, fmax(0.0, volume));
+        f32 rate = (EC.samplerate).f32;
+        f32 freq = 440.0 * pow(2.0, (key - 69.0) / 12.0);
+        f32 dt = fmin(0.45, freq / rate);
+
+        phase = phase + dt;
+        if (phase >= 1.0)
+            phase = phase - 1.0;
+
+        f32 saw = (2.0 * phase - 1.0) - poly_blep(phase, dt);
+
+        // 2 ms one-pole on the gate so notes start and stop without clicks.
+        f32 k = 1.0 - exp(-1.0 / (0.002 * rate));
+        amp = amp + (gate - amp) * k;
+
+        f32 s = 0.5 * saw * amp * level;
+        out = <s, s>;
+    }
+}
