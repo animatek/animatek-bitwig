@@ -31,6 +31,7 @@ ROJO_S = "#E5484D"     # rojo algo mas suave para avisos
 AMARILLO = "#FFC93C"
 MORADO = "#8B6CFF"
 TURQUESA = "#22B8CF"
+CIAN = "#22D3EE"       # pantalla del transporte (Accent hitech)
 MENTA = "#2BB5A0"
 LIMA = "#9BC53D"
 ROSA = "#E36BA8"
@@ -92,7 +93,7 @@ TEMA = {
 
     # Acento: azul de marca; el ambar queda para modulacion y lo que "se mueve"
     "Accent (default)": AZUL,
-    "Accent (hitech)": AMBAR,
+    "Accent (hitech)": CIAN,     # tempo, posicion y tonalidad de la barra de arriba
     "Implicit On (subtle)": AZUL_H,
     "Knob Value Color": AZUL,
     "Led On": AZUL,
