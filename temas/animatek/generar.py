@@ -76,7 +76,7 @@ TEMA = {
     "Light Text": TXT,
     "Lighter Text": "#F4F4F5",
     "Medium Light Text": TXT,
-    "Subtle Dark Text": TXT_5,
+    "Subtle Dark Text": TXT_3,   # texto de las notificaciones: con TXT_5 no se leia
     "Subtle Light Text": a(TXT, "99"),
     "Subtler Light Text": a(TXT, "66"),
     "Dark tree text": TXT_2,
