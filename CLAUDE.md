@@ -77,6 +77,14 @@ SkSL para el panel y el compilador del propio `bitwig.jar` de la 6.1.7. Montado 
   sale `f32` y choca con `f64`: escribirla ya calculada; salida estereo con `out = s;` (no
   `<s, s>`); la velocidad de la nota es `note_in.v` (0-1); campos de `NoteEvent`: `type`,
   `channel`, `key`, `v`; constantes `NOTE_ON`, `NOTE_OFF`, `NOTE_CHOKE`. `f64` y arrays van bien.
+- **Panel y cadenas (probado en Bitwig, 2026-11-27):** secciones = `grid_panel_item` anidado con
+  `border_style 1` y coordenadas relativas; `brightness 3` sale negro, `0` da fondo de device.
+  Cadena anidada = `nested_device_chain_slot` (587) con entradas [audio, notas]; su salida 0 es
+  audio y la **1 son las notas** (leer notas de la 0 **cuelga Bitwig**). Se ve en el panel con
+  `component_display_panel_item` (1704). Campo numerico = `number_field_panel_item` (1713).
+  `pie_color` de los mandos parece un arcoiris: 1 naranja, 2 amarillo, 4 azul, 5 morado (0 y 3
+  por confirmar). Dibujos: SkSL en un componente 5512 alimentado por una salida `f32<4>` del Nitro;
+  Bitwig declara `iResolution` (para compilar en local hay que anteponerlo).
 - Primer objetivo: ATEK303 como instrumento nativo. La secuencia vive en el clip: velocidad >= 100
   es accent y notas solapadas son slide (asi lo decide Open303, `rosic_Open303.cpp:193-195`).
 
