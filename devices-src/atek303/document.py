@@ -380,31 +380,37 @@ def main_panel(ref_of, note_fx_ref, fx_ref, drawing_ref):
     })
 
 
+# Value ranges of Bitwig 6.1.7's panel enums (from its own definitions; an index past the end is
+# "Unknown enum value" and the device does not load). Order inside each enum is what the Lab shows.
+POPUP_STYLES = 9          # BUTTON, DISPLAY, FLAT, PLAIN, STEPPER, UNDERLINE, VALUE_FIELD(_HOVER/_IN_DISPLAY)
+BUTTON_STYLES = 7         # BUTTON, CHECKBOX, BORDERLESS_BUTTON/_HOVER, UNDERLINE, DISPLAY_BUTTON, INSIDE_DISPLAY
+KNOB_STYLES = 4           # NORMAL, DARKEST, LIGHTER, LIGHTEST
+NUMBER_FIELD_STYLES = 3   # NORMAL, WHITE, IN_DISPLAY
+
+
 def lab_panel(ref_of):
     """Panel Lab: every style side by side, numbered, to pick the look from one capture."""
     wave = ref_of["WAVE"]
     items = []
-    for i in range(6):
-        x = 2 + i * 34
-        items += [label(f"popup {i}", x, 0, 32), popup(wave, "", x, 3, 32, style=i, color=1),
-                  label(f"popup {i} / label 1", x, 9, 32),
-                  popup(wave, "", x, 12, 32, style=i, label_style=1, color=1)]
-    for st in range(4):   # Bitwig accepts knob_style 0-3 only (4 is "Unknown enum value")
+    for i in range(POPUP_STYLES):
+        x, y = 2 + (i % 5) * 40, 0 if i < 5 else 9
+        items += [label(f"popup {i}", x, y, 38), popup(wave, "", x, y + 3, 38, style=i, color=1)]
+    for st in range(KNOB_STYLES):
         kn = knob(ref_of["CUTOFF"], f"knob {st}", "", 2 + st * 20, 18, color=1)
         kn["fields"]["knob_style#7055"] = v("Byte", st)
         items.append(kn)
+    for st in range(NUMBER_FIELD_STYLES):
+        x = 88 + st * 38
+        items += [label(f"field {st}", x, 18, 36), number_field(ref_of["SEMI"], "", x, 21, 36, color=1, style=st)]
     for st in range(4):
-        x = 2 + st * 22
-        items += [label(f"field {st}", x, 34, 20), number_field(ref_of["SEMI"], "", x, 37, 20, color=1, style=st)]
-    for st in range(5):
-        t = toggle(ref_of["RETRIG"], f"tog {st}", "", 92 + st * 22, 36, 20)
+        t = toggle(ref_of["RETRIG"], f"tog {st}", "", 88 + st * 28, 27, 26)
         t["fields"]["style#6240"] = v("Byte", st)
         items.append(t)
-    for st in range(3):
-        bg = button_group(ref_of["WAVE"], "", 2 + st * 40, 45, 38)
+    for st in range(BUTTON_STYLES):
+        x = 2 + st * 29
+        bg = button_group(ref_of["SUB_OCTAVE"], "", x, 37, 27)
         bg["fields"]["button_style#7548"] = v("Byte", st)
-        items += [bg]
-    items.append(label("buttons 0 / 1 / 2", 122, 45, 40))
+        items += [label(f"buttons {st}", x, 34, 27), bg]
     grid = obj(1681, "grid_panel_item", {
         "layout_settings#6226": v("NullObject"), "items#6221": v("ObjectList", owned(*items)),
         "border_style#6228": v("Byte", 0), "title#6242": v("String", ""),
