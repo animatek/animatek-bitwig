@@ -4,6 +4,10 @@ Mods y devices propios para **Bitwig Studio** sobre **Patchbay** (BML), el carga
 de shaboogen-dev: cambia el codigo de Bitwig en memoria al arrancar, sin tocar sus archivos.
 Empezado el 2026-11-27. Todo es beta: Patchbay no ha llegado a la 1.0.
 
+**Repo publico: `animatek/animatek-bitwig`** (MIT), para que Patchbay Launcher lo lea como
+fuente sin login: los temas con la carpeta `themes`, los devices con `devices`. Todo lo que
+se publica va en ingles (README, nombres de carpeta); este CLAUDE.md sigue en español.
+
 ## Changelog compartido
 
 Al terminar algo relevante: `cambios apuntar "Bitwig-Mods" "<que cambio, verificacion, commit>" -a <agente>`.
@@ -28,7 +32,7 @@ Por eso hay una 6.1.7 aparte, sacada del .deb de bitwig.com sin instalar nada en
 | `apps/` | `Patchbay-Launcher/` (0.9.7) y `BML-<ver>-linux/` (Patchbay a pelo). Bajados de sus releases. | no |
 | `terceros/` | Clones de referencia: `Patchbay` (loader, modkit, guia en `docs/sdk/`), `Mods`, `patchbay-launcher`, `polarity/bitwig-mods` y `polarity/bitwig-devices`. | no |
 | `mods/` | Nuestros mods (cuando los haya). | si |
-| `temas/animatek/` | Tema **Animatek** (paleta de la web y de VCV). Se retoca en `generar.py` y `./instalar.sh` lo genera y lo copia a `components/animatek` de la Patchbay activa; luego reiniciar Bitwig desde Patchbay. | si |
+| `themes/animatek/` | Tema **Animatek** (paleta de la web y de VCV). Se retoca en `generar.py` y `./instalar.sh` lo genera y lo copia a `components/animatek` de la Patchbay activa; luego reiniciar Bitwig desde Patchbay. | si |
 | `devices/` | Nuestros `.bwdevice` / `.bwmodulator` / `.bwmodule`. | si |
 
 ## Arrancar
