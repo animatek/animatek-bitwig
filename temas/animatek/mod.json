@@ -12,6 +12,6 @@
     "interface_version": "1"
   },
   "resources": {
-    "theme": { "kind": "file", "path": "resources/animatek.bte" }
+    "theme": { "kind": "file", "path": "animatek.bte" }
   }
 }

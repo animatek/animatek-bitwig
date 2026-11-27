@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Genera resources/animatek.bte, el tema de Animatek para Framework: Themes de Patchbay.
+"""Genera animatek.bte, el tema de Animatek para Framework: Themes de Patchbay.
 
 La paleta sale de la web (tema de WordPress) y de los paneles de los modulos de VCV
 (UZZ-VCV-RACK): pizarras #33384A / #0D0F13, textos #9AA2B5 / #D0D6E0, azul #2C7FFF,
@@ -290,8 +290,7 @@ Gradient: true
 
 def main() -> None:
     aqui = Path(__file__).resolve().parent
-    salida = aqui / "resources" / "animatek.bte"
-    salida.parent.mkdir(exist_ok=True)
+    salida = aqui / "animatek.bte"
     lineas = [f"{nombre}: {color}" for nombre, color in TEMA.items()]
     salida.write_text(CABECERA + "\n".join(lineas) + "\n", encoding="utf-8")
     print(f"{len(TEMA)} colores -> {salida}")
