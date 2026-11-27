@@ -12,6 +12,7 @@ and sub, filter, envelope and glide) and an output column with the two chains an
 from __future__ import annotations
 
 import hashlib
+from pathlib import Path
 
 from devices.common.document_graph import iter_owned_objects
 from devices.common.panel_helpers import connection, grid_layout, obj, value as v
@@ -23,15 +24,17 @@ from devices.common.panel_helpers import connection, grid_layout, obj, value as 
 # Preset identifiers of the first eight stay as they were, so saved projects keep their values.
 # ---------------------------------------------------------------------------------------------
 PARAMETERS = [
-    ("dec", "Tuning", "TUNING", "tuning", 0.5, "Master tuning, 400-480 Hz for A4"),
+    # kind, title, preset id, nitro port, default, tooltip, (min, max) for decimals
+    ("dec", "Semi", "SEMI", "semi", 0.0, "Coarse pitch, semitones", -24.0, 24.0),
     ("dec", "Cutoff", "CUTOFF", "cutoff", 0.35, "Filter cutoff, 314-2394 Hz"),
     ("dec", "Resonance", "RESONANCE", "resonance", 0.5, "Filter resonance (linear, as the VR4 pot)"),
-    ("dec", "Env Mod", "ENV_MOD", "env_mod", 0.5, "Filter envelope depth (log taper, as the 303 pot)"),
+    ("dec", "Env", "ENV_MOD", "env_mod", 0.5, "Filter envelope depth (log taper, as the 303 pot)"),
     ("dec", "Decay", "DECAY", "decay", 0.4,
      "Filter envelope decay, 200 ms - 2.5 s as the circuit (accents force the minimum)"),
     ("dec", "Accent", "ACCENT", "accent", 0.5,
      "Accent depth; notes with velocity 100+ are accented, and consecutive accents build up"),
-    ("dec", "Wave", "WAVEFORM", "waveform", 0.0, "Saw (0) to the circuit's square (1), blended"),
+    ("idx", "Wave", "WAVE", "wave_type", ["Saw", "Square", "Triangle"],
+     "Saw: the 303 ramp. Square: the circuit's comparator. Triangle: new"),
     ("dec", "Out", "VOLUME", "volume", 0.5, "Output level"),
     ("dec", "Phase", "PHASE", "phase_knob", 0.0, "Start phase of the VCO on each new note, with Retrig on"),
     ("bool", "Retrig", "RETRIG", "retrig", False,
@@ -42,6 +45,11 @@ PARAMETERS = [
     ("dec", "Slide", "SLIDE", "slide_knob", 0.4, "Slide time, 40-300 ms (overlapping notes slide)"),
     ("dec", "Vel", "VELOCITY", "vel_amount", 0.0, "How much note velocity sets the level"),
     ("dec", "Pan", "PAN", "pan", 0.5, "Pan"),
+    ("dec", "Shape", "SHAPE", "shape_knob", 0.44, "Pulse width of the square (the circuit sits at 44 %), skew of the triangle"),
+    ("dec", "Sync", "SYNC", "sync_knob", 0.0, "Hard sync: the wave runs up to 36 semitones above the VCO"),
+    ("dec", "Fold", "FOLD", "fold_knob", 0.0, "Wavefolder"),
+    ("dec", "Fine", "FINE", "fine", 0.0, "Fine pitch, cents", -100.0, 100.0),
+    ("dec", "Key", "KEYTRACK", "keytrack", 0.0, "Filter keyboard tracking: how much the notes move the cutoff"),
 ]
 
 
@@ -90,9 +98,9 @@ def common_atom_fields(name, ident):
     }
 
 
-def decimal_atom(name, ident, default):
+def decimal_atom(name, ident, default, minimum=0.0, maximum=1.0):
     value_type = obj(123, "decimal_value_type", {
-        "min#292": v("Double", 0.0), "max#293": v("Double", 1.0),
+        "min#292": v("Double", minimum), "max#293": v("Double", maximum),
         "default_value#891": v("Double", default), "domain#294": v("Byte", 0),
         "engine_domain#295": v("Byte", 0), "value_origin#3014": v("Byte", 0),
         "pixel_step_size#1988": v("Double", -1.0), "unit#296": v("Byte", 0),
@@ -144,12 +152,12 @@ def boolean_atom(name, ident, default):
 
 
 def make_atom(spec):
-    kind, name, ident, _port, default, _tip = spec
+    kind, name, ident, _port, default, _tip = spec[:6]
     if kind == "idx":
         return indexed_atom(name, ident, default)
     if kind == "bool":
         return boolean_atom(name, ident, default)
-    return decimal_atom(name, ident, default)
+    return decimal_atom(name, ident, default, *spec[6:8])
 
 
 # ---- Nitro port descriptors -----------------------------------------------------------------
@@ -206,9 +214,11 @@ def label(text, x, y, w, h=3):
     })
 
 
-def knob(binding, title, tooltip, x, y, *, size=2):
-    # size 2: titled knob in a 19 x 15 cell; size 3: the big one (21 x 22).
-    w, h = (21, 22) if size == 3 else (19, 15)
+def knob(binding, title, tooltip, x, y, *, size=2, color=6):
+    # size 1: small, untitled (10 x 9, with a label above); 2: titled, 19 x 15; 3: big, 21 x 22.
+    w, h = {1: (10, 9), 2: (19, 15), 3: (21, 22)}[size]
+    if size == 1:
+        title = ""
     return obj(1687, "knob_panel_item", {
         "layout_settings#6226": v("Object", grid_layout(x, y, w, h)),
         "is_visible#6309": v("Bool", True), "is_enabled#6310": v("Bool", True),
@@ -216,7 +226,36 @@ def knob(binding, title, tooltip, x, y, *, size=2):
         "data_model#6220": binding, "title#6241": v("String", title),
         "knob_size#6223": v("Byte", size), "show_value_popup#10569": v("Bool", True),
         "attribute_id#11012": v("Int16", 712), "knob_style#7055": v("Byte", 3),
-        "label_color#7056": v("Int16", 6), "pie_color#7057": v("Byte", 6),
+        "label_color#7056": v("Int16", 6), "pie_color#7057": v("Byte", color),
+    })
+
+
+def popup(binding, tooltip, x, y, w, h=5, color=6):
+    return obj(1714, "popup_chooser_panel_item", {
+        "layout_settings#6226": v("Object", grid_layout(x, y, w, h)),
+        "is_visible#6309": v("Bool", True), "is_enabled#6310": v("Bool", True),
+        "tooltip_text#6867": v("String", tooltip), "data_model#6220": binding,
+        "attribute_id#11012": v("Int16", 457), "label_style#6262": v("Byte", 0),
+        "style#6266": v("Byte", 0), "color#7528": v("Int16", color), "help_id#10543": v("String", ""),
+    })
+
+
+def number_field(binding, tooltip, x, y, w, h=4):
+    # Only the fields whose types are certain; Bitwig fills in the rest, as for older documents.
+    return obj(1713, "number_field_panel_item", {
+        "layout_settings#6226": v("Object", grid_layout(x, y, w, h)),
+        "is_visible#6309": v("Bool", True), "is_enabled#6310": v("Bool", True),
+        "tooltip_text#6867": v("String", tooltip), "data_model#6220": binding,
+        "attribute_id#11012": v("Int16", 712),
+    })
+
+
+def drawing_item(binding, x, y, w, h):
+    return obj(5517, "", {
+        "layout_settings#6226": v("Object", grid_layout(x, y, w, h)),
+        "is_visible#6309": v("Bool", True), "is_enabled#6310": v("Bool", True),
+        "tooltip_text#6867": v("String", ""), "help_id#10543": v("String", ""),
+        "help_location#10546": v("Byte", 0), "data_model#6220": binding,
     })
 
 
@@ -260,53 +299,65 @@ def section(items, x, y, w, h):
         "items#6221": v("ObjectList", owned(*items)),
         "border_style#6228": v("Byte", 1), "title#6242": v("String", ""),
         "show_title#6243": v("Bool", False), "title_color#6522": v("Byte", 6),
-        "brightness#6245": v("Byte", 3),
+        "brightness#6245": v("Byte", SECTION_BRIGHTNESS),
     })
 
 
-PANEL_WIDTH, PANEL_HEIGHT = 166, 53
+PANEL_WIDTH, PANEL_HEIGHT = 204, 53
+# Frame brightness: 3 came out black; 0 should be the device background (#1B1F2A) or close to it.
+SECTION_BRIGHTNESS = 0
+# Knob arc colours per section, Polymer style (oscillator, filter, envelope, output).
+OSC_COLOR, FILTER_COLOR, ENV_COLOR, OUT_COLOR = 2, 4, 5, 1
 
 
-def main_panel(ref_of, note_fx_ref, fx_ref):
+def main_panel(ref_of, note_fx_ref, fx_ref, drawing_ref):
     p = {spec[2]: (ref_of[spec[2]], spec) for spec in PARAMETERS}
 
-    def k(ident, x, y, size=2):
+    def k(ident, x, y, size=2, color=6):
         binding, spec = p[ident]
-        return knob(binding, spec[1].upper(), spec[5], x, y, size=size)
+        return knob(binding, spec[1], spec[5], x, y, size=size, color=color)
+
+    def tip(ident):
+        return p[ident][1][5]
 
     osc = section([
-        label("OSC", 1, 0, 38),
-        k("WAVEFORM", 0, 3), k("TUNING", 20, 3),
-        k("PHASE", 0, 18),
-        toggle(p["RETRIG"][0], "RETRIG", p["RETRIG"][1][5], 21, 23, 17),
-    ], 0, 0, 40, 34)
+        popup(p["WAVE"][0], tip("WAVE"), 14, 0, 36, color=OSC_COLOR),
+        label("Phase", 1, 6, 11), k("PHASE", 1, 9, size=1, color=OSC_COLOR),
+        toggle(p["RETRIG"][0], "Retrig", tip("RETRIG"), 1, 19, 11),
+        k("SHAPE", 13, 5, color=OSC_COLOR),
+        drawing_item(drawing_ref, 32, 7, 13, 10),
+        k("SYNC", 45, 5, color=OSC_COLOR),
+        k("FOLD", 13, 20, color=OSC_COLOR),
+        label("Semi", 33, 21, 14), number_field(p["SEMI"][0], tip("SEMI"), 33, 25, 14),
+        label("Fine", 48, 21, 15), number_field(p["FINE"][0], tip("FINE"), 48, 25, 15),
+    ], 0, 0, 64, 36)
     sub = section([
-        label("SUB", 20, 0, 19),
-        k("SUB_LEVEL", 0, 1),
-        button_group(p["SUB_OCTAVE"][0], p["SUB_OCTAVE"][1][5], 21, 4, 17),
-        button_group(p["SUB_SHAPE"][0], p["SUB_SHAPE"][1][5], 21, 10, 17),
-    ], 0, 35, 40, 18)
+        k("SUB_LEVEL", 0, 0, color=OSC_COLOR),
+        button_group(p["SUB_OCTAVE"][0], tip("SUB_OCTAVE"), 21, 3, 20),
+        button_group(p["SUB_SHAPE"][0], tip("SUB_SHAPE"), 21, 9, 20),
+    ], 0, 37, 64, 16)
     filt = section([
-        label("FILTER", 1, 0, 40),
-        k("CUTOFF", 10, 4, size=3),
-        k("RESONANCE", 1, 31), k("ENV_MOD", 21, 31),
-    ], 41, 0, 42, 53)
+        label("Filter", 1, 0, 54),
+        label("Env", 1, 5, 10), k("ENV_MOD", 1, 8, size=1, color=FILTER_COLOR),
+        label("Key", 1, 18, 10), k("KEYTRACK", 1, 21, size=1, color=FILTER_COLOR),
+        k("CUTOFF", 12, 5, size=3, color=FILTER_COLOR),
+        k("RESONANCE", 34, 8, color=FILTER_COLOR),
+    ], 65, 0, 56, 53)
     env = section([
-        label("ENVELOPE", 1, 0, 38),
-        k("DECAY", 0, 3), k("ACCENT", 20, 3),
-        label("ACCENT: VELOCITY 100+", 1, 20, 38),
-    ], 84, 0, 40, 34)
+        label("Envelope", 1, 0, 38),
+        k("DECAY", 0, 4, color=ENV_COLOR), k("ACCENT", 20, 4, color=ENV_COLOR),
+        label("Accent: velocity 100+", 1, 21, 38),
+    ], 122, 0, 40, 36)
     glide = section([
-        label("GLIDE", 20, 0, 19),
-        k("SLIDE", 0, 1),
-        label("OVERLAP = SLIDE", 20, 7, 19),
-    ], 84, 35, 40, 18)
+        k("SLIDE", 0, 0, color=ENV_COLOR),
+        label("Overlap", 20, 6, 19),
+    ], 122, 37, 40, 16)
     out = section([
         chain_display(note_fx_ref, 1, 1, 39, 7),
         chain_display(fx_ref, 1, 9, 39, 7),
-        k("VELOCITY", 1, 17), k("PAN", 21, 17),
-        k("VOLUME", 11, 35),
-    ], 125, 0, 41, 53)
+        k("VELOCITY", 1, 17, color=OUT_COLOR), k("PAN", 21, 17, color=OUT_COLOR),
+        k("VOLUME", 11, 35, color=OUT_COLOR),
+    ], 163, 0, 41, 53)
     grid = obj(1681, "grid_panel_item", {
         "layout_settings#6226": v("NullObject"),
         "items#6221": v("ObjectList", owned(osc, sub, filt, env, glide, out)),
@@ -342,6 +393,7 @@ def metadata(project, revision):
 
 
 def document(project, binary, *, note_fx_output_port=1):
+    shader = (Path(__file__).parent / "osc_display.sksl").read_text(encoding="utf-8")
     bindings = []
 
     def ref(target, *, list_entry=False):
@@ -371,14 +423,16 @@ def document(project, binary, *, note_fx_output_port=1):
                          [wire(audio_proxy), wire(note_proxy)], notes=True)
 
     inputs = [note_event_port("note_in", 0)]
-    for index, (kind, _name, _ident, port, _default, _tip) in enumerate(PARAMETERS, 1):
+    for index, (kind, _name, _ident, port, *_rest) in enumerate(PARAMETERS, 1):
         inputs.append(nitro_port(port, index, 1, output=False, kind=1 if kind == "dec" else 3))
     dsp = obj(1721, "nitro_atom", {
         "settings#6194": settings([wire(note_fx, note_fx_output_port), *(wire(a) for a in atoms)]),
         "channel_count#607": v("Byte", 0), "oversampling#608": v("Byte", 0),
         "fft_order#6567": v("Byte", 0),
         "nitro_inputs#15756": v("ObjectList", owned(*inputs)),
-        "nitro_outputs#15757": v("ObjectList", owned(nitro_port("out", 0, 2, output=True))),
+        "nitro_outputs#15757": v("ObjectList", owned(
+            nitro_port("out", 0, 2, output=True), nitro_port("display", 1, 4, output=True),
+        )),
         "code_storage#10421": v("ByteArray", [0, *binary]),
         "is_code_storage_binary_ast#14616": v("Bool", True),
         "use_code_path#11360": v("Bool", False), "code_path#11357": v("String", ""),
@@ -386,18 +440,26 @@ def document(project, binary, *, note_fx_output_port=1):
     # FX: an audio chain after the engine, as in Polymer.
     fx = chain_slot("FX", "FX", "Audio effects after ATEK303", [wire(dsp, 0), wire(note_proxy)], notes=False)
 
+    # The oscillator drawing: an SkSL shader fed by the core's four-lane display output.
+    drawing = obj(5512, "", {
+        "settings#6194": settings([wire(dsp, 1), *(connection() for _ in range(8))]),
+        "channel_count#607": v("Byte", 0), "name#374": v("String", ""),
+        "prevent_parent_from_sleeping#11002": v("Bool", False),
+        "preset_identifier#701": v("String", "OSC_DRAWING"), "#16316": v("WideString", shader),
+    })
+
     output_proxy = proxy(output=True)
     output_proxy["fields"]["settings#6194"] = settings([wire(fx, 0)])
 
     for spec, atom in zip(PARAMETERS, atoms):
         ref_of[spec[2]] = ref(atom)
-    panel = main_panel(ref_of, ref(note_fx), ref(fx))
+    panel = main_panel(ref_of, ref(note_fx), ref(fx), ref(drawing))
 
     identity = project["identity"]
     tags = project["presentation"]["tags"]
     body = obj(151, "device_contents", {
         "proxy_in_ports#177": v("ObjectList", owned(audio_proxy, note_proxy)),
-        "child_components#173": v("ObjectList", owned(audio_source, *atoms, note_fx, dsp, fx)),
+        "child_components#173": v("ObjectList", owned(audio_source, *atoms, note_fx, dsp, drawing, fx)),
         "panels#6213": v("ObjectList", owned(panel)),
         "proxy_out_ports#178": v("ObjectList", owned(output_proxy)),
         "device_UUID#385": v("Uuid", identity["uuid"]), "device_name#386": v("String", project["name"]),

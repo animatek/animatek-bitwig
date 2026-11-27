@@ -55,13 +55,13 @@ component atek303_v2
         }
     }
 
-    audio_inport f32 tuning = 0.5;
+    audio_inport f32 semi = 0.0;           // coarse pitch, -24..+24 semitones
     audio_inport f32 cutoff = 0.35;
     audio_inport f32 resonance = 0.5;
     audio_inport f32 env_mod = 0.5;
     audio_inport f32 decay = 0.4;
     audio_inport f32 accent = 0.5;
-    audio_inport f32 waveform = 0.0;
+    value_inport i32 wave_type;            // 0: saw (303), 1: square (circuit), 2: triangle
     audio_inport f32 volume = 0.5;
     audio_inport f32 phase_knob = 0.0;     // start phase when Retrig is on (0-360 degrees)
     value_inport bool retrig;              // off: free-running VCO, as the hardware
@@ -71,8 +71,16 @@ component atek303_v2
     audio_inport f32 slide_knob = 0.4;     // slide time 40-300 ms (0.4 ~ 120 ms)
     audio_inport f32 vel_amount = 0.0;     // how much note velocity scales the level
     audio_inport f32 pan = 0.5;
+    audio_inport f32 shape_knob = 0.44;    // pulse width (square) or skew (triangle)
+    audio_inport f32 sync_knob = 0.0;
+    audio_inport f32 fold_knob = 0.0;
+    audio_inport f32 fine = 0.0;           // fine pitch, -100..+100 cents
+    audio_inport f32 keytrack = 0.0;       // filter keyboard tracking: 0 none, 1 = 100 % (follows the notes)
 
     audio_outport out;
+    audio_outport f32<4> display;          // wave, shape, fold, sync ratio: for the panel drawing
+
+    f64 slave = 0.0;
 
     f64 vel_now = 0.8;
     f64 sub_phase = 0.0;
@@ -196,6 +204,14 @@ component atek303_v2
         return 0.0;
     }
 
+    // Wavefolder: reflects the signal back into -1..1 (a triangle transfer curve).
+    f64 fold_f(f64 x)
+    {
+        f64 t = (x + 1.0) * 0.25;
+        t = t - floor(t);
+        return 1.0 - 4.0 * fabs(t - 0.5);
+    }
+
     f64 fract_f(f64 x)
     {
         return x - floor(x);
@@ -217,6 +233,7 @@ component atek303_v2
     void reset_voice()
     {
         phase = 0.0;
+        slave = 0.0;
         sub_phase = 0.0;
         lp_saw = 0.0; lp_sq = 0.0;
         hp_saw_x = 0.0; hp_saw_y = 0.0; hp_sq_x = 0.0; hp_sq_y = 0.0;
@@ -234,13 +251,18 @@ component atek303_v2
     process
     {
         // Read every port once per sample.
-        f64 k_tuning = (tuning).f64;
+        f64 k_semi = fmin(24.0, fmax(-24.0, (semi).f64));
+        f64 k_fine = fmin(100.0, fmax(-100.0, (fine).f64));
         f64 k_cutoff = (cutoff).f64;
         f64 k_res = (resonance).f64;
         f64 k_env = (env_mod).f64;
         f64 k_decay = (decay).f64;
         f64 k_accent = (accent).f64;
-        f64 k_wave = (waveform).f64;
+        i32 k_wave_type = wave_type;
+        f64 k_shape = fmin(1.0, fmax(0.0, (shape_knob).f64));
+        f64 k_sync = fmin(1.0, fmax(0.0, (sync_knob).f64));
+        f64 k_fold = fmin(1.0, fmax(0.0, (fold_knob).f64));
+        f64 k_key = fmin(1.0, fmax(0.0, (keytrack).f64));
         f64 k_volume = (volume).f64;
         f64 k_phase = fmin(1.0, fmax(0.0, (phase_knob).f64));
         bool k_retrig = retrig;
@@ -272,9 +294,11 @@ component atek303_v2
         }
 
         // Knob mappings, as in the ATEK303 VCV module with the Circuit model.
-        f64 tune_hz = 400.0 + 80.0 * fmin(1.0, fmax(0.0, k_tuning));
+        f64 tune_hz = 440.0 * pow(2.0, (k_semi + 0.01 * k_fine) / 12.0);
         f64 cutoff_hz = 314.0 * pow(2394.0 / 314.0, fmin(1.0, fmax(0.0, k_cutoff)));
         cutoff_hz = cutoff_hz * (1.0 + drift_cut * 0.015);
+        // Keyboard tracking around C3 (MIDI 48, the middle of the 303's range).
+        cutoff_hz = cutoff_hz * pow(2.0, (key_now - 48.0) / 12.0 * k_key);
         f64 res_lin = fmin(1.0, fmax(0.0, k_res));            // linear pot (VR4, type B)
         f64 e_knob = fmin(1.0, fmax(0.0, k_env));
         f64 env_mod_pct = 100.0 * e_knob * e_knob * e_knob;    // log taper (VR5, type A)
@@ -283,7 +307,6 @@ component atek303_v2
         f64 tau_max = 1085.7362047581296;
         f64 decay_ms = tau_min * pow(tau_max / tau_min, fmin(1.0, fmax(0.0, k_decay)));
         f64 accent_knob = fmin(1.0, fmax(0.0, k_accent));
-        f64 blend = fmin(1.0, fmax(0.0, k_wave));
 
         // Accent accumulators discharge.
         accent_fast = accent_fast - accent_fast / (0.10 * fs);
@@ -325,6 +348,7 @@ component atek303_v2
                 {
                     // Phase control: every new (non-slid) note starts the VCO at this phase.
                     phase = k_phase;
+                    slave = k_phase;
                     sub_phase = k_phase * sub_div;
                 }
                 slew = log(tune_hz) + (key_now - 69.0) / 12.0 * 0.6931471805599453;
@@ -429,7 +453,11 @@ component atek303_v2
         f64 a_lp_sq = 1.0 - exp(-2.0 * pi * fmin(31830.98861837907, 0.45 * fs4) / fs4);   // 5 us slew
         f64 a_hp_saw = exp(-2.0 * pi * 15.0 / fs4);    // saw droop 15 Hz
         f64 a_hp_sq = exp(-2.0 * pi * 60.0 / fs4);     // square droop 60 Hz
-        f64 pulse_width = 0.44;
+        // Shape: pulse width of the square (the circuit's WIDTH trimmer sits at 44 %), or the
+        // skew of the triangle. Sync: the slave runs up to 36 semitones above the VCO.
+        f64 pulse_width = 0.05 + 0.9 * k_shape;
+        f64 skew = 0.01 + 0.98 * k_shape;
+        f64 sync_ratio = pow(2.0, 3.0 * k_sync);
 
         // Other one-pole coefficients.
         f64 x_hp1 = exp(-2.0 * pi * 44.486 / fs4);
@@ -455,23 +483,36 @@ component atek303_v2
         f64 aa2_b0 = 0.5 * aa2_b1;
 
         f64 dt = fmax(0.0, fmin(0.45, freq / fs4));
+        f64 sdt = fmin(0.45, dt * sync_ratio);
         f64 sig = 0.0;
         for (i32 i = 0; i < 4; ++i)
         {
             // ATEK oscillator: capacitor ramp and comparator square, polyBLEP edges,
             // rounded reset corner / finite slew, and AC-coupling droop.
+            // Master ramp (the VCO) and the synced slave that draws the wave: the slave runs at
+            // `sync_ratio` times the pitch and restarts every time the master ramp resets.
             phase = phase + dt;
+            slave = slave + sdt;
             if (phase >= 1.0)
+            {
                 phase = phase - 1.0;
-            f64 saw = (2.0 * phase - 1.0) - poly_blep(phase, dt);
+                slave = phase * sync_ratio;
+            }
+            if (slave >= 1.0)
+                slave = slave - floor(slave);
+            f64 saw = (2.0 * slave - 1.0) - poly_blep(slave, sdt);
             f64 sqv = -1.0;
-            if (phase < pulse_width)
+            if (slave < pulse_width)
                 sqv = 1.0;
-            sqv = sqv + poly_blep(phase, dt);
-            f64 t_fall = phase + (1.0 - pulse_width);
+            sqv = sqv + poly_blep(slave, sdt);
+            f64 t_fall = slave + (1.0 - pulse_width);
             if (t_fall >= 1.0)
                 t_fall = t_fall - 1.0;
-            sqv = sqv - poly_blep(t_fall, dt);
+            sqv = sqv - poly_blep(t_fall, sdt);
+            // Triangle with skew: the peak moves from the start (ramp down) to the end (ramp up).
+            f64 tri = 1.0 - 2.0 * (slave - skew) / (1.0 - skew);
+            if (slave < skew)
+                tri = -1.0 + 2.0 * slave / skew;
             lp_saw = lp_saw + a_lp_saw * (saw - lp_saw);
             lp_sq = lp_sq + a_lp_sq * (sqv - lp_sq);
             hp_saw_y = a_hp_saw * (hp_saw_y + lp_saw - hp_saw_x);
@@ -500,7 +541,14 @@ component atek303_v2
                 else
                     sub = sin(2.0 * pi * sub_phase);
             }
-            f64 osc = 0.484 * (hp_saw_y + blend * (hp_sq_y - hp_saw_y) + k_sub * sub);
+            f64 wave = hp_saw_y;
+            if (k_wave_type == 1)
+                wave = hp_sq_y;
+            if (k_wave_type == 2)
+                wave = tri;
+            if (k_fold > 0.0)
+                wave = fold_f(wave * (1.0 + 4.0 * k_fold));
+            f64 osc = 0.484 * (wave + k_sub * sub);
             f64 x = -osc;
 
             // Pre-filter highpass, 44.5 Hz.
@@ -569,5 +617,9 @@ component atek303_v2
         o[0] = (left).f32;
         o[1] = (right).f32;
         out = o;
+
+        // Panel drawing: which wave, its shape, the fold and the sync ratio.
+        f32<4> d = <(k_wave_type).f32, (k_shape).f32, (k_fold).f32, (sync_ratio).f32>;
+        display = d;
     }
 }
