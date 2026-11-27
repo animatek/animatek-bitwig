@@ -66,6 +66,10 @@ SkSL para el panel y el compilador del propio `bitwig.jar` de la 6.1.7. Montado 
 - Lo construido para probar va a `build/devices/` (fuera de Git), que es la carpeta registrada en
   Patchbay: `~/.config/bml/mods/custom-device-registrar/config.json`. Bitwig se reinicia desde
   Patchbay para que lo vea.
+- **ATEK303** (`devices-src/atek303/`): instrumento de eventos (el `note_in` NoteEvent va directo
+  al Nitro, como en la 6.1.7 hacen los instrumentos de polarity; nada de nucleos opacos). `build.py`
+  compila y copia a `build/devices/`. **v0 probado en Bitwig el 2026-11-27**: le llegan notas y el
+  volumen va. Sintaxis de eventos: `event_inport NoteEvent note_in { if (note_in.type == note_in.NOTE_ON) ... note_in.key }`.
 - Primer objetivo: ATEK303 como instrumento nativo. La secuencia vive en el clip: velocidad >= 100
   es accent y notas solapadas son slide (asi lo decide Open303, `rosic_Open303.cpp:193-195`).
 
