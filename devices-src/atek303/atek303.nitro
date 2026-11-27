@@ -16,6 +16,7 @@ component atek303_v2
     i32 request = 0;          // 1 trigger, 2 slide, 3 release, 4 slide back
     i32 request_key = 36;
     i32 request_accent = 0;
+    f64 request_vel = 0.8;
 
     event_inport NoteEvent note_in
     {
@@ -33,6 +34,7 @@ component atek303_v2
                 held_count = held_count + 1;
             }
             request_key = key;
+            request_vel = (note_in.v).f64;
             request_accent = 0;
             if (note_in.v >= 0.787)
                 request_accent = 1;
@@ -61,8 +63,19 @@ component atek303_v2
     audio_inport f32 accent = 0.5;
     audio_inport f32 waveform = 0.0;
     audio_inport f32 volume = 0.5;
+    audio_inport f32 phase_knob = 0.0;     // start phase when Retrig is on (0-360 degrees)
+    value_inport bool retrig;              // off: free-running VCO, as the hardware
+    audio_inport f32 sub_level = 0.0;
+    value_inport i32 sub_octave;           // 0: -1 octave, 1: -2 octaves
+    value_inport i32 sub_shape;            // 0: sine (as in the FM-1 mod), 1: square
+    audio_inport f32 slide_knob = 0.4;     // slide time 40-300 ms (0.4 ~ 120 ms)
+    audio_inport f32 vel_amount = 0.0;     // how much note velocity scales the level
+    audio_inport f32 pan = 0.5;
 
     audio_outport out;
+
+    f64 vel_now = 0.8;
+    f64 sub_phase = 0.0;
 
     // ---- engine state ----
     i32 idle = 1;
@@ -204,6 +217,7 @@ component atek303_v2
     void reset_voice()
     {
         phase = 0.0;
+        sub_phase = 0.0;
         lp_saw = 0.0; lp_sq = 0.0;
         hp_saw_x = 0.0; hp_saw_y = 0.0; hp_sq_x = 0.0; hp_sq_y = 0.0;
         y1 = 0.0; y2 = 0.0; y3 = 0.0; y4 = 0.0;
@@ -228,6 +242,17 @@ component atek303_v2
         f64 k_accent = (accent).f64;
         f64 k_wave = (waveform).f64;
         f64 k_volume = (volume).f64;
+        f64 k_phase = fmin(1.0, fmax(0.0, (phase_knob).f64));
+        bool k_retrig = retrig;
+        f64 k_sub = fmin(1.0, fmax(0.0, (sub_level).f64));
+        i32 k_sub_oct = sub_octave;
+        i32 k_sub_shape = sub_shape;
+        f64 k_slide = fmin(1.0, fmax(0.0, (slide_knob).f64));
+        f64 k_vel = fmin(1.0, fmax(0.0, (vel_amount).f64));
+        f64 k_pan = fmin(1.0, fmax(0.0, (pan).f64));
+        f64 sub_div = 0.5;
+        if (k_sub_oct == 1)
+            sub_div = 0.25;
 
         f64 fs = (EC.samplerate).f64;
         f64 fs4 = 4.0 * fs;
@@ -272,6 +297,7 @@ component atek303_v2
             if (r == 1 || r == 2)
             {
                 key_now = (request_key).f64;
+                vel_now = request_vel;
                 if (request_accent == 1)
                 {
                     f64 build = 0.5 * accent_fast + 0.5 * accent_slow;
@@ -295,6 +321,12 @@ component atek303_v2
                     reset_voice();
                     idle = 0;
                 }
+                if (k_retrig)
+                {
+                    // Phase control: every new (non-slid) note starts the VCO at this phase.
+                    phase = k_phase;
+                    sub_phase = k_phase * sub_div;
+                }
                 slew = log(tune_hz) + (key_now - 69.0) / 12.0 * 0.6931471805599453;
                 f64 c_main = exp(-1.0 / (0.001 * main_tau * fs));
                 main_env = 1.0 / c_main;
@@ -313,7 +345,8 @@ component atek303_v2
         // ---- pitch: leaky integrator on log(frequency), plus DAC error and drift (cents) ----
         f64 cents = dac_error(key_now) * 1.5 + drift_pitch * 1.5;
         f64 target = log(tune_hz) + (key_now - 69.0 + 0.01 * cents) / 12.0 * 0.6931471805599453;
-        f64 c_slide = exp(-1.0 / (fs * 0.001 * 120.0));
+        f64 slide_ms = 40.0 * pow(7.5, k_slide);   // 40-300 ms; 0.4 is about 120 ms (the module's default)
+        f64 c_slide = exp(-1.0 / (fs * 0.001 * slide_ms));
         slew = target + c_slide * (slew - target);
         f64 freq = exp(slew);
 
@@ -445,7 +478,29 @@ component atek303_v2
             hp_saw_x = lp_saw;
             hp_sq_y = a_hp_sq * (hp_sq_y + lp_sq - hp_sq_x);
             hp_sq_x = lp_sq;
-            f64 osc = 0.484 * (hp_saw_y + blend * (hp_sq_y - hp_saw_y));
+            // Sub-oscillator: one or two octaves down, locked to the VCO ramp.
+            sub_phase = sub_phase + dt * sub_div;
+            if (sub_phase >= 1.0)
+                sub_phase = sub_phase - 1.0;
+            f64 sub = 0.0;
+            if (k_sub > 0.0)
+            {
+                if (k_sub_shape == 1)
+                {
+                    f64 sdt = dt * sub_div;
+                    sub = -1.0;
+                    if (sub_phase < 0.5)
+                        sub = 1.0;
+                    sub = sub + poly_blep(sub_phase, sdt);
+                    f64 sf = sub_phase + 0.5;
+                    if (sf >= 1.0)
+                        sf = sf - 1.0;
+                    sub = sub - poly_blep(sf, sdt);
+                }
+                else
+                    sub = sin(2.0 * pi * sub_phase);
+            }
+            f64 osc = 0.484 * (hp_saw_y + blend * (hp_sq_y - hp_saw_y) + k_sub * sub);
             f64 x = -osc;
 
             // Pre-filter highpass, 44.5 Hz.
@@ -504,7 +559,15 @@ component atek303_v2
         // Output stage saturation (strong), on the 5 V scale of the VCV module.
         f64 volts = 5.0 * core;
         volts = 4.5 * tanh_f(volts / 4.5);
-        f64 result = 0.2 * volts * 2.0 * k_volume;
-        out = (result).f32;
+        f64 vel_gain = 1.0 - k_vel + k_vel * vel_now;
+        f64 result = 0.2 * volts * 2.0 * k_volume * vel_gain;
+        // Equal-power pan.
+        f64 pan_angle = 0.5 * pi * k_pan;
+        f64 left = result * cos(pan_angle) * 1.4142135623730951;
+        f64 right = result * sin(pan_angle) * 1.4142135623730951;
+        f32<> o = 0.0;
+        o[0] = (left).f32;
+        o[1] = (right).f32;
+        out = o;
     }
 }

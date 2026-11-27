@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "projectId": "animatek.atek303",
   "name": "ATEK303",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "surface": "device",
   "target": {"bitwigVersion": "6.1.7", "platform": "linux-x86_64"},
   "identity": {
