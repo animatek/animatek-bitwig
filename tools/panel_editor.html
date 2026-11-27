@@ -165,7 +165,11 @@ function itemHTML(it, w, h) {
     case "toggle": return (it.icon ? `<img src="/icon/${encodeURI(it.icon)}" style="height:80%;filter:invert(1) brightness(1.4)">` : "") +
       `<span>${it.title || (it.icon ? "" : p?.title || "Toggle")}</span>`;
     case "chain": return `<span>${it.chain === "NOTE_FX" ? "Note FX" : "FX"}</span>`;
-    case "icon": return `<img src="/icon/${encodeURI(it.icon)}" alt="${it.icon}" style="width:100%;height:100%;object-fit:contain;filter:invert(1) brightness(1.4)" onerror="this.replaceWith(Object.assign(document.createElement('span'),{textContent:'?',style:'color:#E5484D'}))">`;
+    case "icon": {
+      // Tinted with the palette colour, as Bitwig draws it (the SVG used as a mask).
+      const url = `url("/icon/${encodeURI(it.icon)}")`;
+      return `<div title="${it.icon}" style="width:100%;height:100%;background:${col};-webkit-mask:${url} center/contain no-repeat;mask:${url} center/contain no-repeat"></div>`;
+    }
     case "modsource": return `<span style="color:${PALETTE[1]};font-weight:700;font-size:calc(var(--z)*2.6px)">●→</span>`;
     case "drawing":
       return `<svg width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="none">
@@ -314,7 +318,7 @@ function inspector() {
       box.appendChild(field("Estilo", t.style ?? 0, (v) => (t.style = v)));
       const hint = document.createElement("div"); hint.className = "hint"; hint.textContent = STYLE_HINTS[t.type]; box.appendChild(hint);
     }
-    if (["knob", "label", "popup", "field"].includes(t.type)) {
+    if (["knob", "label", "popup", "field", "icon"].includes(t.type)) {
       const l = document.createElement("label"); l.innerHTML = "<span>Color</span>";
       const sw = document.createElement("div"); sw.className = "swatches";
       PALETTE.forEach((c, i) => {
@@ -349,7 +353,7 @@ function addItem() {
     popup: { param: first("idx"), w: 22, h: 5, style: 1, color: 1 }, field: { param: first("dec"), w: 14, h: 4, style: 1, color: 1 },
     buttons: { param: first("idx"), w: 20, h: 4, style: 6 }, toggle: { param: first("bool"), w: 11, h: 5, style: 2 },
     chain: { chain: "FX", w: 39, h: 7 }, drawing: { w: 13, h: 10 },
-    icon: { icon: "device/power_on", w: 3, h: 3 }, modsource: { w: 4, h: 3 },
+    icon: { icon: "device/power_on", w: 3, h: 3, color: 6 }, modsource: { w: 4, h: 3 },
   }[type];
   snapshot();
   layout.sections[sel.s].items.push({ ...base, ...extra });

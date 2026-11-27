@@ -276,13 +276,17 @@ def icon_file(name):
     return name if name.endswith(".svg") else name + ".svg"
 
 
-def image(filename, x, y, w, h):
-    """One of Bitwig's own icons, by name (resources/icons)."""
-    filename = icon_file(filename)
-    return obj(1719, "image_panel_item", {
+def image(filename, x, y, w, h, color=None):
+    """One of Bitwig's own icons, by name (resources/icons), tinted with a palette colour.
+
+    The colour is the same kind of attribute as a knob's pie_color (Bitwig's default is 6)."""
+    fields = {
         "layout_settings#6226": v("Object", grid_layout(x, y, w, h)),
-        "is_visible#6309": v("Bool", True), "filename#6258": v("String", filename),
-    })
+        "is_visible#6309": v("Bool", True), "filename#6258": v("String", icon_file(filename)),
+    }
+    if color is not None:
+        fields["color#6521"] = v("Int16", color)
+    return obj(1719, "image_panel_item", fields)
 
 
 def mapping_source(binding, x, y, w, h):
@@ -402,7 +406,7 @@ def main_panel(ref_of, note_fx_ref, fx_ref, drawing_ref, mod_ref=None):
         if kind == "drawing":
             return drawing_item(drawing_ref, x, y, w, h)
         if kind == "icon":
-            return image(it["icon"], x, y, w or 3, h or 3)
+            return image(it["icon"], x, y, w or 3, h or 3, it.get("color"))
         if kind == "modsource":
             return mapping_source(mod_ref, x, y, w or 4, h or 3)
         raise ValueError(f"layout.json: unknown item type {kind!r}")
