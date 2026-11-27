@@ -205,10 +205,10 @@ def chain_slot(name, ident, tooltip, connections, *, notes):
 
 # ---- panel ----------------------------------------------------------------------------------
 
-def label(text, x, y, w, h=3):
+def label(text, x, y, w, h=3, color=6):
     return obj(1683, "label_panel_item", {
         "layout_settings#6226": v("Object", grid_layout(x, y, w, h)),
-        "text#6219": v("String", text), "color#6520": v("Int16", 6),
+        "text#6219": v("String", text), "color#6520": v("Int16", color),
         "horizontal_alignment#6400": v("Byte", 1), "vertical_alignment#6401": v("Byte", 1),
         "is_visible#6309": v("Bool", True),
     })
@@ -240,13 +240,14 @@ def popup(binding, tooltip, x, y, w, h=5, color=6):
     })
 
 
-def number_field(binding, tooltip, x, y, w, h=4):
-    # Only the fields whose types are certain; Bitwig fills in the rest, as for older documents.
+def number_field(binding, tooltip, x, y, w, h=4, color=6):
+    # Only the fields whose types are clear; Bitwig fills in the rest, as for older documents.
     return obj(1713, "number_field_panel_item", {
         "layout_settings#6226": v("Object", grid_layout(x, y, w, h)),
         "is_visible#6309": v("Bool", True), "is_enabled#6310": v("Bool", True),
         "tooltip_text#6867": v("String", tooltip), "data_model#6220": binding,
         "attribute_id#11012": v("Int16", 712),
+        "show_value_bar#6581": v("Bool", False), "color#7526": v("Int16", color),
     })
 
 
@@ -306,8 +307,10 @@ def section(items, x, y, w, h):
 PANEL_WIDTH, PANEL_HEIGHT = 204, 53
 # Frame brightness: 3 came out black; 0 should be the device background (#1B1F2A) or close to it.
 SECTION_BRIGHTNESS = 0
-# Knob arc colours per section, Polymer style (oscillator, filter, envelope, output).
-OSC_COLOR, FILTER_COLOR, ENV_COLOR, OUT_COLOR = 2, 4, 5, 1
+# Bitwig's panel palette, as seen on screen (2 yellow, 4 blue, 5 purple, 1 orange): a rainbow,
+# so 0 should be red, 3 green and 6 grey. Polymer colours: amber oscillator, green-teal filter,
+# blue envelope, red output.
+OSC_COLOR, FILTER_COLOR, ENV_COLOR, OUT_COLOR = 1, 3, 4, 0
 
 
 def main_panel(ref_of, note_fx_ref, fx_ref, drawing_ref):
@@ -328,8 +331,8 @@ def main_panel(ref_of, note_fx_ref, fx_ref, drawing_ref):
         drawing_item(drawing_ref, 32, 7, 13, 10),
         k("SYNC", 45, 5, color=OSC_COLOR),
         k("FOLD", 13, 20, color=OSC_COLOR),
-        label("Semi", 33, 21, 14), number_field(p["SEMI"][0], tip("SEMI"), 33, 25, 14),
-        label("Fine", 48, 21, 15), number_field(p["FINE"][0], tip("FINE"), 48, 25, 15),
+        label("Semi", 33, 21, 14), number_field(p["SEMI"][0], tip("SEMI"), 33, 25, 14, color=OSC_COLOR),
+        label("Fine", 48, 21, 15), number_field(p["FINE"][0], tip("FINE"), 48, 25, 15, color=OSC_COLOR),
     ], 0, 0, 64, 36)
     sub = section([
         k("SUB_LEVEL", 0, 0, color=OSC_COLOR),
@@ -337,26 +340,27 @@ def main_panel(ref_of, note_fx_ref, fx_ref, drawing_ref):
         button_group(p["SUB_SHAPE"][0], tip("SUB_SHAPE"), 21, 9, 20),
     ], 0, 37, 64, 16)
     filt = section([
-        label("Filter", 1, 0, 54),
+        label("Filter", 1, 0, 54, color=FILTER_COLOR),
         label("Env", 1, 5, 10), k("ENV_MOD", 1, 8, size=1, color=FILTER_COLOR),
         label("Key", 1, 18, 10), k("KEYTRACK", 1, 21, size=1, color=FILTER_COLOR),
         k("CUTOFF", 12, 5, size=3, color=FILTER_COLOR),
         k("RESONANCE", 34, 8, color=FILTER_COLOR),
     ], 65, 0, 56, 53)
     env = section([
-        label("Envelope", 1, 0, 38),
+        label("Envelope", 1, 0, 38, color=ENV_COLOR),
         k("DECAY", 0, 4, color=ENV_COLOR), k("ACCENT", 20, 4, color=ENV_COLOR),
         label("Accent: velocity 100+", 1, 21, 38),
     ], 122, 0, 40, 36)
     glide = section([
         k("SLIDE", 0, 0, color=ENV_COLOR),
-        label("Overlap", 20, 6, 19),
+        label("Glide", 20, 6, 19, color=ENV_COLOR),
     ], 122, 37, 40, 16)
     out = section([
         chain_display(note_fx_ref, 1, 1, 39, 7),
         chain_display(fx_ref, 1, 9, 39, 7),
-        k("VELOCITY", 1, 17, color=OUT_COLOR), k("PAN", 21, 17, color=OUT_COLOR),
-        k("VOLUME", 11, 35, color=OUT_COLOR),
+        label("Vel", 5, 18, 12), k("VELOCITY", 6, 21, size=1, color=OUT_COLOR),
+        label("Pan", 24, 18, 12), k("PAN", 25, 21, size=1, color=OUT_COLOR),
+        k("VOLUME", 11, 34, color=OUT_COLOR),
     ], 163, 0, 41, 53)
     grid = obj(1681, "grid_panel_item", {
         "layout_settings#6226": v("NullObject"),
