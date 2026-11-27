@@ -64,6 +64,9 @@ PARAMETERS = [
     ("dec", "Fine", "FINE", "fine", 0.0, "Fine pitch, cents", -100.0, 100.0),
     ("dec", "Key", "KEYTRACK", "keytrack", 0.0, "Filter keyboard tracking: how much the notes move the cutoff"),
     ("dec", "Noise", "NOISE", "noise_level", 0.0, "White noise into the filter, with the oscillator"),
+    ("bool", "Filter", "FILTER_ON", "filter_on", True, "Filter on; off bypasses it (the oscillator goes straight through)"),
+    ("idx", "Ratio", "RATIO", "ratio", ["1:4", "1:2", "1:1", "2:1", "4:1"],
+     "Oscillator ratio: two octaves down to two up", 2),
 ]
 
 
@@ -128,13 +131,13 @@ def decimal_atom(name, ident, default, minimum=0.0, maximum=1.0):
     })
 
 
-def indexed_atom(name, ident, items):
+def indexed_atom(name, ident, items, default_index=0):
     entries = [obj(258, "indexed_value_item", {
         "id#650": v("Byte", index), "name#651": v("String", label.split("|")[0]), "icon#9823": v("String", ""),
         "description#9824": v("String", label.partition("|")[2]), "deprecated#10795": v("Bool", False),
     }) for index, label in enumerate(items)]
     value_type = obj(155, "indexed_value_type", {
-        "items#393": v("ObjectList", owned(*entries)), "default_value#6958": v("Byte", 0),
+        "items#393": v("ObjectList", owned(*entries)), "default_value#6958": v("Byte", default_index),
         "is_periodic#16667": v("Bool", False),
     })
     fields = common_atom_fields(name, ident)
@@ -145,7 +148,7 @@ def indexed_atom(name, ident, items):
     return obj(180, "indexed_value_atom", {
         **fields, "value_type#702": v("Object", value_type),
         "allow_automation#7489": v("Bool", True), "allow_modulation#7490": v("Bool", True),
-        "value#457": v("Byte", 0),
+        "value#457": v("Byte", default_index),
     })
 
 
@@ -168,7 +171,7 @@ def boolean_atom(name, ident, default):
 def make_atom(spec):
     kind, name, ident, _port, default, _tip = spec[:6]
     if kind == "idx":
-        return indexed_atom(name, ident, default)
+        return indexed_atom(name, ident, default, spec[6] if len(spec) > 6 else 0)
     if kind == "bool":
         return boolean_atom(name, ident, default)
     return decimal_atom(name, ident, default, *spec[6:8])
@@ -267,6 +270,35 @@ def number_field(binding, tooltip, x, y, w, h=4, color=6, style=None):
     })
 
 
+def image(filename, x, y, w, h):
+    """One of Bitwig's own icons, by name (resources/icons)."""
+    return obj(1719, "image_panel_item", {
+        "layout_settings#6226": v("Object", grid_layout(x, y, w, h)),
+        "is_visible#6309": v("Bool", True), "filename#6258": v("String", filename),
+    })
+
+
+def mapping_source(binding, x, y, w, h):
+    """The modulation arrow: drag it onto any parameter in Bitwig to modulate it."""
+    return obj(1717, "mapping_source_panel_item", {
+        "layout_settings#6226": v("Object", grid_layout(x, y, w, h)),
+        "is_visible#6309": v("Bool", True), "is_enabled#6310": v("Bool", True),
+        "data_model#6220": binding,
+    })
+
+
+def modulation_atom(name, ident, connections):
+    """A modulation source fed by the Nitro core, as Polymer's envelopes are."""
+    display = obj(1488, "modulation_source_atom_display_settings", {
+        "is_source_expanded_in_inspector#5455": v("Bool", False),
+    })
+    return obj(766, "modulation_source_atom", {
+        "settings#6194": settings(connections), "channel_count#607": v("Byte", 0),
+        "oversampling#608": v("Byte", 0), "name#374": v("String", name),
+        "preset_identifier#701": v("String", ident), "display_settings#5452": v("Object", display),
+    })
+
+
 def drawing_item(binding, x, y, w, h):
     return obj(5517, "", {
         "layout_settings#6226": v("Object", grid_layout(x, y, w, h)),
@@ -329,7 +361,7 @@ SECTION_BRIGHTNESS = 0
 OSC_COLOR, FILTER_COLOR, ENV_COLOR, OUT_COLOR = 1, 3, 4, 0
 
 
-def main_panel(ref_of, note_fx_ref, fx_ref, drawing_ref):
+def main_panel(ref_of, note_fx_ref, fx_ref, drawing_ref, mod_ref=None):
     """The panel, from layout.json (edited with tools/panel_editor.py)."""
     layout = json.loads((Path(__file__).parent / "layout.json").read_text(encoding="utf-8"))
     specs = {spec[2]: spec for spec in PARAMETERS}
@@ -355,11 +387,17 @@ def main_panel(ref_of, note_fx_ref, fx_ref, drawing_ref):
         if kind == "toggle":
             t = toggle(binding, it.get("title", spec[1]), tooltip, x, y, w, h or 5)
             t["fields"]["style#6240"] = v("Byte", it.get("style", TOGGLE_TEXT))
+            if it.get("icon"):
+                t["fields"]["icon_name#6239"] = v("String", it["icon"])
             return t
         if kind == "chain":
             return chain_display(chains[it["chain"]], x, y, w, h)
         if kind == "drawing":
             return drawing_item(drawing_ref, x, y, w, h)
+        if kind == "icon":
+            return image(it["icon"], x, y, w or 3, h or 3)
+        if kind == "modsource":
+            return mapping_source(mod_ref, x, y, w or 4, h or 3)
         raise ValueError(f"layout.json: unknown item type {kind!r}")
 
     sections = [section([build(it) for it in sec["items"]], sec["x"], sec["y"], sec["w"], sec["h"])
@@ -386,29 +424,22 @@ KNOB_STYLES = 4           # NORMAL, DARKEST, LIGHTER, LIGHTEST
 NUMBER_FIELD_STYLES = 3   # NORMAL, WHITE, IN_DISPLAY
 
 
-def lab_panel(ref_of):
-    """Panel Lab: every style side by side, numbered, to pick the look from one capture."""
-    wave = ref_of["WAVE"]
-    items = []
-    for i in range(POPUP_STYLES):
-        x, y = 2 + (i % 5) * 40, 0 if i < 5 else 9
-        items += [label(f"popup {i}", x, y, 38), popup(wave, "", x, y + 3, 38, style=i, color=1)]
-    for st in range(KNOB_STYLES):
-        kn = knob(ref_of["CUTOFF"], f"knob {st}", "", 2 + st * 20, 18, color=1)
-        kn["fields"]["knob_style#7055"] = v("Byte", st)
-        items.append(kn)
-    for st in range(NUMBER_FIELD_STYLES):
-        x = 88 + st * 38
-        items += [label(f"field {st}", x, 18, 36), number_field(ref_of["SEMI"], "", x, 21, 36, color=1, style=st)]
-    for st in range(4):
-        t = toggle(ref_of["RETRIG"], f"tog {st}", "", 88 + st * 28, 27, 26)
-        t["fields"]["style#6240"] = v("Byte", st)
-        items.append(t)
-    for st in range(BUTTON_STYLES):
-        x = 2 + st * 29
-        bg = button_group(ref_of["SUB_OCTAVE"], "", x, 37, 27)
-        bg["fields"]["button_style#7548"] = v("Byte", st)
-        items += [label(f"buttons {st}", x, 34, 27), bg]
+ICON_FORMATS = ["device/power_on", "device/power_on.svg", "power_on", "icons/device/power_on.svg"]
+
+
+def lab_panel(ref_of, mod_ref=None):
+    """Panel Lab 2: icon name formats, toggles with icons and the modulation arrow."""
+    items = [label("Lab 2: iconos, botones con icono y flecha de modulacion", 2, 0, 120)]
+    for i, name in enumerate(ICON_FORMATS):
+        x = 2 + i * 50
+        items += [label(f"img {i}: {name}", x, 4, 48), image(name, x + 20, 8, 4, 4)]
+    for i, name in enumerate(ICON_FORMATS):
+        x = 2 + i * 50
+        t = toggle(ref_of["FILTER_ON"], "", f"icon {name}", x + 18, 22, 8, 5)
+        t["fields"]["icon_name#6239"] = v("String", name)
+        items += [label(f"tog {i}", x, 17, 48), t]
+    items += [label("flecha", 2, 33, 20), mapping_source(mod_ref, 8, 37, 5, 4),
+              label("ratio (popup 7)", 30, 33, 30), popup(ref_of["RATIO"], "", 34, 37, 14, color=1, style=7)]
     grid = obj(1681, "grid_panel_item", {
         "layout_settings#6226": v("NullObject"), "items#6221": v("ObjectList", owned(*items)),
         "border_style#6228": v("Byte", 0), "title#6242": v("String", ""),
@@ -482,11 +513,17 @@ def document(project, binary, *, note_fx_output_port=1, lab=False):
         "nitro_inputs#15756": v("ObjectList", owned(*inputs)),
         "nitro_outputs#15757": v("ObjectList", owned(
             nitro_port("out", 0, 2, output=True), nitro_port("display", 1, 4, output=True),
+            nitro_port("mod_out", 2, 1, output=True),
         )),
         "code_storage#10421": v("ByteArray", [0, *binary]),
         "is_code_storage_binary_ast#14616": v("Bool", True),
         "use_code_path#11360": v("Bool", False), "code_path#11357": v("String", ""),
     })
+    # The envelope + accent modulation source, only when the panel shows its arrow.
+    layout = json.loads((Path(__file__).parent / "layout.json").read_text(encoding="utf-8"))
+    wants_mod = lab or any(it["type"] == "modsource" for sec in layout["sections"] for it in sec["items"])
+    mod = modulation_atom("Env + Accent", "ENV_MOD_OUT", [wire(dsp, 2)]) if wants_mod else None
+
     # FX: an audio chain after the engine, as in Polymer.
     fx = chain_slot("FX", "FX", "Audio effects after ATEK303", [wire(dsp, 0), wire(note_proxy)], notes=False)
 
@@ -503,13 +540,14 @@ def document(project, binary, *, note_fx_output_port=1, lab=False):
 
     for spec, atom in zip(PARAMETERS, atoms):
         ref_of[spec[2]] = ref(atom)
-    panel = lab_panel(ref_of) if lab else main_panel(ref_of, ref(note_fx), ref(fx), ref(drawing))
+    mod_ref = ref(mod) if mod else None
+    panel = lab_panel(ref_of, mod_ref) if lab else main_panel(ref_of, ref(note_fx), ref(fx), ref(drawing), mod_ref)
 
     identity = project["identity"]
     tags = project["presentation"]["tags"]
     body = obj(151, "device_contents", {
         "proxy_in_ports#177": v("ObjectList", owned(audio_proxy, note_proxy)),
-        "child_components#173": v("ObjectList", owned(audio_source, *atoms, note_fx, dsp, drawing, fx)),
+        "child_components#173": v("ObjectList", owned(audio_source, *atoms, note_fx, dsp, drawing, *([mod] if mod else []), fx)),
         "panels#6213": v("ObjectList", owned(panel)),
         "proxy_out_ports#178": v("ObjectList", owned(output_proxy)),
         "device_UUID#385": v("Uuid", identity["uuid"]), "device_name#386": v("String", project["name"]),

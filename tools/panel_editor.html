@@ -145,8 +145,10 @@ function itemHTML(it, w, h) {
     case "popup": return `<span style="color:${col}">${p?.choices?.[0] || "—"}</span><span style="color:${col}">▾</span>`;
     case "field": return `<span style="color:${col}">0.00</span>`;
     case "buttons": return (p?.choices || ["A", "B"]).map((c, i) => `<span class="${i === 0 ? "on" : ""}">${c}</span>`).join("");
-    case "toggle": return `<span>${it.title || p?.title || "Toggle"}</span>`;
+    case "toggle": return `<span>${it.icon ? "◆ " : ""}${it.title || (it.icon ? "" : p?.title || "Toggle")}</span>`;
     case "chain": return `<span>${it.chain === "NOTE_FX" ? "Note FX" : "FX"}</span>`;
+    case "icon": return `<span title="${it.icon}" style="font-size:calc(var(--z)*2px);color:#C9CED8">◆ ${String(it.icon).split("/").pop()}</span>`;
+    case "modsource": return `<span style="color:${PALETTE[1]};font-weight:700;font-size:calc(var(--z)*2.6px)">●→</span>`;
     case "drawing":
       return `<svg width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="none">
         <polyline points="5,85 95,15" stroke="${PALETTE[1]}" stroke-width="5" fill="none"/></svg>`;
@@ -268,6 +270,12 @@ function inspector() {
   if (sel.i != null) {
     if (t.type === "knob") box.appendChild(selectField("Tamaño", t.size || 2, [[1, "1 pequeño"], [2, "2 mediano"], [3, "3 grande"]], (v) => (t.size = Number(v))));
     if (t.type === "label") box.appendChild(field("Texto", t.text, (v) => (t.text = v), "text"));
+    if (["icon", "toggle"].includes(t.type)) {
+      box.appendChild(field("Icono", t.icon ?? "", (v) => { if (v) t.icon = v; else delete t.icon; }, "text"));
+      const hint = document.createElement("div"); hint.className = "hint";
+      hint.textContent = "Iconos de Bitwig, p. ej. device/power_on, device/retrigger, device/phase, device/keytrack, device/envelope_analog, device/arp_up_down";
+      box.appendChild(hint);
+    }
     if (["knob", "toggle"].includes(t.type)) box.appendChild(field("Título", t.title ?? "", (v) => { if (v) t.title = v; else delete t.title; }, "text"));
     if (t.param !== undefined) {
       const kinds = { knob: ["dec"], field: ["dec"], popup: ["idx"], buttons: ["idx"], toggle: ["bool"] }[t.type] || [];
@@ -299,7 +307,7 @@ function inspector() {
     $("dup").onclick = duplicate; $("del").onclick = remove;
   } else {
     const row = document.createElement("div"); row.className = "row";
-    const types = ["knob", "label", "popup", "field", "buttons", "toggle", "chain", "drawing"];
+    const types = ["knob", "label", "popup", "field", "buttons", "toggle", "icon", "modsource", "chain", "drawing"];
     row.innerHTML = `<select id="newtype">${types.map((x) => `<option>${x}</option>`).join("")}</select>
       <button id="additem">+ Añadir aquí</button><button id="delsec">Borrar sección</button>`;
     box.appendChild(row);
@@ -317,6 +325,7 @@ function addItem() {
     popup: { param: first("idx"), w: 22, h: 5, style: 1, color: 1 }, field: { param: first("dec"), w: 14, h: 4, style: 1, color: 1 },
     buttons: { param: first("idx"), w: 20, h: 4, style: 6 }, toggle: { param: first("bool"), w: 11, h: 5, style: 2 },
     chain: { chain: "FX", w: 39, h: 7 }, drawing: { w: 13, h: 10 },
+    icon: { icon: "device/power_on", w: 3, h: 3 }, modsource: { w: 4, h: 3 },
   }[type];
   snapshot();
   layout.sections[sel.s].items.push({ ...base, ...extra });

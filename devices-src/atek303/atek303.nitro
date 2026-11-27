@@ -77,9 +77,12 @@ component atek303_v2
     audio_inport f32 fine = 0.0;           // fine pitch, -100..+100 cents
     audio_inport f32 keytrack = 0.0;       // filter keyboard tracking: 0 none, 1 = 100 % (follows the notes)
     audio_inport f32 noise_level = 0.0;    // white noise into the filter, with the oscillator
+    value_inport bool filter_on;           // off: the filter is bypassed (the oscillator goes straight through)
+    value_inport i32 ratio;                // oscillator ratio 1:4 1:2 1:1 2:1 4:1 (index 2 = 1:1)
 
     audio_outport out;
     audio_outport f32<4> display;          // wave, shape, fold, sync ratio: for the panel drawing
+    audio_outport f32 mod_out;             // modulation source: filter envelope plus accent, 0-1
 
     f64 slave = 0.0;
     f64 noise_seed = 12345.0;
@@ -266,6 +269,9 @@ component atek303_v2
         f64 k_fold = fmin(1.0, fmax(0.0, (fold_knob).f64));
         f64 k_key = fmin(1.0, fmax(0.0, (keytrack).f64));
         f64 k_noise = fmin(1.0, fmax(0.0, (noise_level).f64));
+        bool k_filter_on = filter_on;
+        i32 k_ratio = ratio;
+        f64 octave_shift = 12.0 * ((k_ratio).f64 - 2.0);
         f64 k_volume = (volume).f64;
         f64 k_phase = fmin(1.0, fmax(0.0, (phase_knob).f64));
         bool k_retrig = retrig;
@@ -354,7 +360,7 @@ component atek303_v2
                     slave = k_phase;
                     sub_phase = k_phase * sub_div;
                 }
-                slew = log(tune_hz) + (key_now - 69.0) / 12.0 * 0.6931471805599453;
+                slew = log(tune_hz) + (key_now + octave_shift - 69.0) / 12.0 * 0.6931471805599453;
                 f64 c_main = exp(-1.0 / (0.001 * main_tau * fs));
                 main_env = 1.0 / c_main;
                 amp_time = 0.0;
@@ -371,7 +377,7 @@ component atek303_v2
 
         // ---- pitch: leaky integrator on log(frequency), plus DAC error and drift (cents) ----
         f64 cents = dac_error(key_now) * 1.5 + drift_pitch * 1.5;
-        f64 target = log(tune_hz) + (key_now - 69.0 + 0.01 * cents) / 12.0 * 0.6931471805599453;
+        f64 target = log(tune_hz) + (key_now + octave_shift - 69.0 + 0.01 * cents) / 12.0 * 0.6931471805599453;
         f64 slide_ms = 40.0 * pow(7.5, k_slide);   // 40-300 ms; 0.4 is about 120 ms (the module's default)
         f64 c_slide = exp(-1.0 / (fs * 0.001 * slide_ms));
         slew = target + c_slide * (slew - target);
@@ -578,6 +584,8 @@ component atek303_v2
             y3 = y3 + fb0 * diode(y2 - 2.0 * y3 + y4);
             y4 = y4 + fb0 * diode(y3 - 2.0 * y4);
             f64 filtered = 2.0 * g_comp * y4;
+            if (!k_filter_on)
+                filtered = hp;
 
             // Anti-alias lowpass.
             f64 a = aa1_b0 * filtered + aa1_b1 * aa1_x1 + aa1_b0 * aa1_x2 + aa1_a1 * aa1_y1 + aa1_a2 * aa1_y2;
@@ -632,5 +640,10 @@ component atek303_v2
         // Panel drawing: which wave, its shape, the fold and the sync ratio.
         f32<4> d = <(k_wave_type).f32, (k_shape).f32, (k_fold).f32, (sync_ratio).f32>;
         display = d;
+
+        // Modulation source for Bitwig: the filter envelope plus the accent sweep, 0-1.
+        f64 mod_value = fmin(1.0, fmax(0.0, main_env + accent_gain * rc2));
+        f32 m = (mod_value).f32;
+        mod_out = m;
     }
 }
