@@ -1,0 +1,362 @@
+{
+  "panel": {
+    "width": 204,
+    "height": 53
+  },
+  "sections": [
+    {
+      "id": "osc",
+      "x": 0,
+      "y": 0,
+      "w": 64,
+      "h": 36,
+      "items": [
+        {
+          "type": "popup",
+          "param": "WAVE",
+          "x": 22,
+          "y": 0,
+          "w": 22,
+          "h": 5,
+          "style": 1,
+          "color": 1
+        },
+        {
+          "type": "label",
+          "text": "Phase",
+          "x": 1,
+          "y": 6,
+          "w": 11,
+          "h": 3,
+          "color": 6
+        },
+        {
+          "type": "knob",
+          "param": "PHASE",
+          "x": 1,
+          "y": 9,
+          "size": 1,
+          "color": 1
+        },
+        {
+          "type": "toggle",
+          "param": "RETRIG",
+          "title": "Retrig",
+          "x": 1,
+          "y": 19,
+          "w": 11,
+          "h": 5,
+          "style": 2
+        },
+        {
+          "type": "knob",
+          "param": "SHAPE",
+          "x": 13,
+          "y": 5,
+          "size": 2,
+          "color": 1
+        },
+        {
+          "type": "drawing",
+          "x": 32,
+          "y": 7,
+          "w": 13,
+          "h": 10
+        },
+        {
+          "type": "knob",
+          "param": "SYNC",
+          "x": 45,
+          "y": 5,
+          "size": 2,
+          "color": 1
+        },
+        {
+          "type": "knob",
+          "param": "FOLD",
+          "x": 13,
+          "y": 20,
+          "size": 2,
+          "color": 1
+        },
+        {
+          "type": "label",
+          "text": "Semi",
+          "x": 33,
+          "y": 21,
+          "w": 14,
+          "h": 3,
+          "color": 6
+        },
+        {
+          "type": "field",
+          "param": "SEMI",
+          "x": 33,
+          "y": 25,
+          "w": 14,
+          "h": 4,
+          "style": 1,
+          "color": 1
+        },
+        {
+          "type": "label",
+          "text": "Fine",
+          "x": 48,
+          "y": 21,
+          "w": 15,
+          "h": 3,
+          "color": 6
+        },
+        {
+          "type": "field",
+          "param": "FINE",
+          "x": 48,
+          "y": 25,
+          "w": 15,
+          "h": 4,
+          "style": 1,
+          "color": 1
+        }
+      ]
+    },
+    {
+      "id": "sub",
+      "x": 0,
+      "y": 37,
+      "w": 64,
+      "h": 16,
+      "items": [
+        {
+          "type": "knob",
+          "param": "SUB_LEVEL",
+          "x": 0,
+          "y": 0,
+          "size": 2,
+          "color": 1
+        },
+        {
+          "type": "buttons",
+          "param": "SUB_OCTAVE",
+          "x": 21,
+          "y": 3,
+          "w": 20,
+          "h": 4,
+          "style": 6
+        },
+        {
+          "type": "buttons",
+          "param": "SUB_SHAPE",
+          "x": 21,
+          "y": 9,
+          "w": 20,
+          "h": 4,
+          "style": 6
+        }
+      ]
+    },
+    {
+      "id": "filter",
+      "x": 65,
+      "y": 0,
+      "w": 56,
+      "h": 53,
+      "items": [
+        {
+          "type": "label",
+          "text": "Filter",
+          "x": 1,
+          "y": 0,
+          "w": 54,
+          "h": 3,
+          "color": 3
+        },
+        {
+          "type": "label",
+          "text": "Env",
+          "x": 1,
+          "y": 5,
+          "w": 10,
+          "h": 3,
+          "color": 6
+        },
+        {
+          "type": "knob",
+          "param": "ENV_MOD",
+          "x": 1,
+          "y": 8,
+          "size": 1,
+          "color": 3
+        },
+        {
+          "type": "label",
+          "text": "Key",
+          "x": 1,
+          "y": 18,
+          "w": 10,
+          "h": 3,
+          "color": 6
+        },
+        {
+          "type": "knob",
+          "param": "KEYTRACK",
+          "x": 1,
+          "y": 21,
+          "size": 1,
+          "color": 3
+        },
+        {
+          "type": "knob",
+          "param": "CUTOFF",
+          "x": 12,
+          "y": 5,
+          "size": 3,
+          "color": 3
+        },
+        {
+          "type": "knob",
+          "param": "RESONANCE",
+          "x": 34,
+          "y": 8,
+          "size": 2,
+          "color": 3
+        }
+      ]
+    },
+    {
+      "id": "envelope",
+      "x": 122,
+      "y": 0,
+      "w": 40,
+      "h": 36,
+      "items": [
+        {
+          "type": "label",
+          "text": "Envelope",
+          "x": 1,
+          "y": 0,
+          "w": 38,
+          "h": 3,
+          "color": 4
+        },
+        {
+          "type": "knob",
+          "param": "DECAY",
+          "x": 0,
+          "y": 4,
+          "size": 2,
+          "color": 4
+        },
+        {
+          "type": "knob",
+          "param": "ACCENT",
+          "x": 20,
+          "y": 4,
+          "size": 2,
+          "color": 4
+        },
+        {
+          "type": "label",
+          "text": "Accent: velocity 100+",
+          "x": 1,
+          "y": 21,
+          "w": 38,
+          "h": 3,
+          "color": 6
+        }
+      ]
+    },
+    {
+      "id": "glide",
+      "x": 122,
+      "y": 37,
+      "w": 40,
+      "h": 16,
+      "items": [
+        {
+          "type": "knob",
+          "param": "SLIDE",
+          "x": 0,
+          "y": 0,
+          "size": 2,
+          "color": 4
+        },
+        {
+          "type": "label",
+          "text": "Glide",
+          "x": 20,
+          "y": 6,
+          "w": 19,
+          "h": 3,
+          "color": 4
+        }
+      ]
+    },
+    {
+      "id": "output",
+      "x": 163,
+      "y": 0,
+      "w": 41,
+      "h": 53,
+      "items": [
+        {
+          "type": "chain",
+          "chain": "NOTE_FX",
+          "x": 1,
+          "y": 1,
+          "w": 39,
+          "h": 7
+        },
+        {
+          "type": "chain",
+          "chain": "FX",
+          "x": 1,
+          "y": 9,
+          "w": 39,
+          "h": 7
+        },
+        {
+          "type": "label",
+          "text": "Vel",
+          "x": 5,
+          "y": 18,
+          "w": 12,
+          "h": 3,
+          "color": 6
+        },
+        {
+          "type": "knob",
+          "param": "VELOCITY",
+          "x": 6,
+          "y": 21,
+          "size": 1,
+          "color": 0
+        },
+        {
+          "type": "label",
+          "text": "Pan",
+          "x": 24,
+          "y": 18,
+          "w": 12,
+          "h": 3,
+          "color": 6
+        },
+        {
+          "type": "knob",
+          "param": "PAN",
+          "x": 25,
+          "y": 21,
+          "size": 1,
+          "color": 0
+        },
+        {
+          "type": "knob",
+          "param": "VOLUME",
+          "x": 11,
+          "y": 34,
+          "size": 2,
+          "color": 0
+        }
+      ]
+    }
+  ]
+}

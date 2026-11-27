@@ -12,6 +12,7 @@ and sub, filter, envelope and glide) and an output column with the two chains an
 from __future__ import annotations
 
 import hashlib
+import json
 from pathlib import Path
 
 from devices.common.document_graph import iter_owned_objects
@@ -328,64 +329,50 @@ OSC_COLOR, FILTER_COLOR, ENV_COLOR, OUT_COLOR = 1, 3, 4, 0
 
 
 def main_panel(ref_of, note_fx_ref, fx_ref, drawing_ref):
-    p = {spec[2]: (ref_of[spec[2]], spec) for spec in PARAMETERS}
+    """The panel, from layout.json (edited with tools/panel_editor.py)."""
+    layout = json.loads((Path(__file__).parent / "layout.json").read_text(encoding="utf-8"))
+    specs = {spec[2]: spec for spec in PARAMETERS}
+    chains = {"NOTE_FX": note_fx_ref, "FX": fx_ref}
 
-    def k(ident, x, y, size=2, color=6):
-        binding, spec = p[ident]
-        return knob(binding, spec[1], spec[5], x, y, size=size, color=color)
+    def build(it):
+        kind, x, y = it["type"], it["x"], it["y"]
+        w, h = it.get("w"), it.get("h")
+        spec = specs.get(it.get("param"))
+        binding = ref_of.get(it.get("param"))
+        tooltip = spec[5] if spec else ""
+        color = it.get("color", 6)
+        if kind == "knob":
+            return knob(binding, it.get("title", spec[1]), tooltip, x, y, size=it.get("size", 2), color=color)
+        if kind == "label":
+            return label(it["text"], x, y, w, h or 3, color=color)
+        if kind == "popup":
+            return popup(binding, tooltip, x, y, w, h or 5, color=color, style=it.get("style", POPUP_HEADER))
+        if kind == "field":
+            return number_field(binding, tooltip, x, y, w, h or 4, color=color, style=it.get("style", FIELD_TEXT))
+        if kind == "buttons":
+            return button_group(binding, tooltip, x, y, w, h or 4, style=it.get("style", BUTTONS_UNDERLINE))
+        if kind == "toggle":
+            t = toggle(binding, it.get("title", spec[1]), tooltip, x, y, w, h or 5)
+            t["fields"]["style#6240"] = v("Byte", it.get("style", TOGGLE_TEXT))
+            return t
+        if kind == "chain":
+            return chain_display(chains[it["chain"]], x, y, w, h)
+        if kind == "drawing":
+            return drawing_item(drawing_ref, x, y, w, h)
+        raise ValueError(f"layout.json: unknown item type {kind!r}")
 
-    def tip(ident):
-        return p[ident][1][5]
-
-    osc = section([
-        popup(p["WAVE"][0], tip("WAVE"), 22, 0, 22, color=OSC_COLOR, style=POPUP_HEADER),
-        label("Phase", 1, 6, 11), k("PHASE", 1, 9, size=1, color=OSC_COLOR),
-        toggle(p["RETRIG"][0], "Retrig", tip("RETRIG"), 1, 19, 11),
-        k("SHAPE", 13, 5, color=OSC_COLOR),
-        drawing_item(drawing_ref, 32, 7, 13, 10),
-        k("SYNC", 45, 5, color=OSC_COLOR),
-        k("FOLD", 13, 20, color=OSC_COLOR),
-        label("Semi", 33, 21, 14), number_field(p["SEMI"][0], tip("SEMI"), 33, 25, 14, color=OSC_COLOR, style=FIELD_TEXT),
-        label("Fine", 48, 21, 15), number_field(p["FINE"][0], tip("FINE"), 48, 25, 15, color=OSC_COLOR, style=FIELD_TEXT),
-    ], 0, 0, 64, 36)
-    sub = section([
-        k("SUB_LEVEL", 0, 0, color=OSC_COLOR),
-        button_group(p["SUB_OCTAVE"][0], tip("SUB_OCTAVE"), 21, 3, 20),
-        button_group(p["SUB_SHAPE"][0], tip("SUB_SHAPE"), 21, 9, 20),
-    ], 0, 37, 64, 16)
-    filt = section([
-        label("Filter", 1, 0, 54, color=FILTER_COLOR),
-        label("Env", 1, 5, 10), k("ENV_MOD", 1, 8, size=1, color=FILTER_COLOR),
-        label("Key", 1, 18, 10), k("KEYTRACK", 1, 21, size=1, color=FILTER_COLOR),
-        k("CUTOFF", 12, 5, size=3, color=FILTER_COLOR),
-        k("RESONANCE", 34, 8, color=FILTER_COLOR),
-    ], 65, 0, 56, 53)
-    env = section([
-        label("Envelope", 1, 0, 38, color=ENV_COLOR),
-        k("DECAY", 0, 4, color=ENV_COLOR), k("ACCENT", 20, 4, color=ENV_COLOR),
-        label("Accent: velocity 100+", 1, 21, 38),
-    ], 122, 0, 40, 36)
-    glide = section([
-        k("SLIDE", 0, 0, color=ENV_COLOR),
-        label("Glide", 20, 6, 19, color=ENV_COLOR),
-    ], 122, 37, 40, 16)
-    out = section([
-        chain_display(note_fx_ref, 1, 1, 39, 7),
-        chain_display(fx_ref, 1, 9, 39, 7),
-        label("Vel", 5, 18, 12), k("VELOCITY", 6, 21, size=1, color=OUT_COLOR),
-        label("Pan", 24, 18, 12), k("PAN", 25, 21, size=1, color=OUT_COLOR),
-        k("VOLUME", 11, 34, color=OUT_COLOR),
-    ], 163, 0, 41, 53)
+    sections = [section([build(it) for it in sec["items"]], sec["x"], sec["y"], sec["w"], sec["h"])
+                for sec in layout["sections"]]
     grid = obj(1681, "grid_panel_item", {
         "layout_settings#6226": v("NullObject"),
-        "items#6221": v("ObjectList", owned(osc, sub, filt, env, glide, out)),
+        "items#6221": v("ObjectList", owned(*sections)),
         "border_style#6228": v("Byte", 0), "title#6242": v("String", ""),
         "show_title#6243": v("Bool", False), "title_color#6522": v("Byte", 6),
         "brightness#6245": v("Byte", 1),
     })
     return obj(1680, "panel", {
         "name#6211": v("String", "Main"), "root_item#6212": v("Object", grid),
-        "width#6232": v("Int16", PANEL_WIDTH), "height#6233": v("Byte", PANEL_HEIGHT),
+        "width#6232": v("Int16", layout["panel"]["width"]), "height#6233": v("Byte", layout["panel"]["height"]),
         "expressions#6277": v("ObjectList", []),
     })
 

@@ -1,0 +1,370 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Panel Editor</title>
+<style>
+  :root {
+    --bg: #11141B; --device: #1B1F2A; --section: #232936; --border: #2C3240;
+    --text: #E2E8F0; --muted: #94A3B8; --sel: #2C7FFF; --amber: #FD9A00;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.4 Inter, system-ui, sans-serif; }
+  header { position: sticky; top: 0; z-index: 10; display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+           padding: 10px 16px; background: #0B0E14; border-bottom: 1px solid var(--border); }
+  header h1 { font-size: 18px; margin: 0 12px 0 0; }
+  button, select, input { font: inherit; color: var(--text); background: #1E2533; border: 1px solid var(--border);
+                          border-radius: 8px; padding: 6px 12px; }
+  button { cursor: pointer; }
+  button.primary { background: var(--sel); border-color: var(--sel); font-weight: 700; }
+  button:hover { filter: brightness(1.15); }
+  #status { color: var(--muted); font-size: 15px; margin-left: auto; white-space: pre-wrap; max-width: 46ch; }
+  main { display: flex; gap: 16px; padding: 16px; align-items: flex-start; }
+  #stagewrap { overflow: auto; flex: 1; padding: 12px; background: #0B0E14; border-radius: 12px; }
+  #stage { position: relative; background: var(--device); border-radius: 8px; user-select: none; }
+  #stage.grid { background-image: radial-gradient(#3A4152 1px, transparent 1px); }
+  .section { position: absolute; background: var(--section); border: 1px solid var(--border); border-radius: 6px; }
+  .item { position: absolute; display: flex; align-items: center; justify-content: center; cursor: grab; }
+  .item:hover, .section:hover { outline: 1px dashed #5A6478; }
+  .selected { outline: 2px solid var(--sel) !important; z-index: 5; }
+  .handle { position: absolute; right: -6px; bottom: -6px; width: 12px; height: 12px; background: var(--sel);
+            border-radius: 3px; cursor: nwse-resize; }
+  .label { font-size: calc(var(--z) * 2.1px); font-weight: 600; white-space: nowrap; overflow: hidden; }
+  .knobtitle { position: absolute; bottom: 0; width: 100%; text-align: center; font-size: calc(var(--z) * 2px); color: var(--text); }
+  .popup { justify-content: space-between; padding: 0 6px; font-weight: 600; font-size: calc(var(--z) * 2.2px); }
+  .popup.box { background: #10141C; border: 1px solid var(--border); border-radius: 4px; }
+  .field { justify-content: flex-end; padding: 0 4px; font-size: calc(var(--z) * 2.1px); font-variant-numeric: tabular-nums; }
+  .field.box { background: #0A0D12; border-radius: 3px; }
+  .buttons { gap: 2px; font-size: calc(var(--z) * 1.9px); }
+  .buttons span { flex: 1; text-align: center; padding: 2px 0; }
+  .buttons.underline span.on { border-bottom: 2px solid #E5484D; color: #E5484D; }
+  .buttons.box span { background: #10141C; } .buttons.box span.on { background: #E5484D; }
+  .toggle { font-size: calc(var(--z) * 2px); color: var(--text); }
+  .chain { background: #232936; border: 1px solid var(--border); border-top: 2px solid #E5484D; border-radius: 4px;
+           font-weight: 700; font-size: calc(var(--z) * 2.1px); }
+  .drawing { border: 1px dashed #4A5160; }
+  aside { width: 340px; flex: none; background: #161B25; border: 1px solid var(--border); border-radius: 12px; padding: 14px; }
+  aside h2 { font-size: 17px; margin: 0 0 10px; }
+  aside label { display: grid; grid-template-columns: 90px 1fr; align-items: center; gap: 8px; margin: 7px 0; color: var(--muted); }
+  aside input, aside select { width: 100%; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; margin: 10px 0; }
+  .swatches { display: flex; gap: 6px; }
+  .swatch { width: 28px; height: 28px; border-radius: 6px; border: 2px solid transparent; cursor: pointer; display: grid;
+            place-items: center; font-size: 12px; color: #000; font-weight: 700; }
+  .swatch.on { border-color: #fff; }
+  .hint { color: var(--muted); font-size: 14px; margin-top: 12px; line-height: 1.5; }
+  kbd { background: #2A3142; border-radius: 4px; padding: 1px 5px; font-size: 13px; }
+</style>
+</head>
+<body>
+<header>
+  <h1 id="title">Panel Editor</h1>
+  <button id="undo" title="Ctrl+Z">Deshacer</button>
+  <button id="addsection">+ Sección</button>
+  <label style="display:flex;gap:6px;align-items:center;color:var(--muted)">Zoom
+    <input id="zoom" type="range" min="4" max="12" value="7" style="width:120px"></label>
+  <label style="display:flex;gap:6px;align-items:center;color:var(--muted)">
+    <input id="showgrid" type="checkbox" checked> Rejilla</label>
+  <button id="save" title="Ctrl+S">Guardar</button>
+  <button id="build" class="primary">Guardar y construir</button>
+  <div id="status">Cargando…</div>
+</header>
+<main>
+  <div id="stagewrap"><div id="stage" class="grid"></div></div>
+  <aside id="inspector"></aside>
+</main>
+<script>
+"use strict";
+// Bitwig's panel palette (index -> colour), as seen in Bitwig 6.1.7.
+const PALETTE = ["#E5484D", "#F59E0B", "#EAD34A", "#3EC49A", "#4C8DF6", "#9B6CF0", "#C9CED8", "#8A93A6"];
+const KNOB_SIZE = {1: [10, 9], 2: [19, 15], 3: [21, 22]};
+const STYLE_HINTS = {
+  popup: "1 cabecera (Polymer) · 6 ◂ ▸ · 0 caja · 7 texto",
+  field: "1 texto (Polymer) · 0 caja · 2 caja clara",
+  buttons: "6 subrayado (Polymer) · 0 botones · 2 sin borde",
+  toggle: "2 texto · 0 botón · 1 botón oscuro",
+};
+let layout = null, params = [], sel = null, history = [], Z = 7, drag = null;
+
+const $ = (id) => document.getElementById(id);
+const stage = $("stage");
+const status = (msg) => { $("status").textContent = msg; };
+const param = (id) => params.find((p) => p.id === id);
+
+function snapshot() { history.push(JSON.stringify(layout)); if (history.length > 100) history.shift(); }
+function undo() { if (history.length) { layout = JSON.parse(history.pop()); render(); status("Deshecho."); } }
+
+function size(it) {
+  if (it.type === "knob") { const [w, h] = KNOB_SIZE[it.size || 2]; return [w, h]; }
+  return [it.w || 10, it.h || 3];
+}
+
+function knobSVG(it, w, h) {
+  const titled = (it.size || 2) > 1;
+  const d = Math.min(w, titled ? h - 4 : h) * Z * 0.92;
+  const style = it.size === 1 ? 1 : 2;
+  const body = style === 2 ? "#D5D9E0" : "#3A4152";
+  const col = PALETTE[it.color ?? 6];
+  const r = d / 2, cx = r, cy = r, rr = r * 0.86;
+  const a0 = Math.PI * 0.75, a1 = a0 + Math.PI * 1.5 * 0.5;
+  const pt = (a, rad) => [cx + rad * Math.cos(a), cy + rad * Math.sin(a)];
+  const [x0, y0] = pt(a0, rr), [x1, y1] = pt(a1, rr), [xe, ye] = pt(a0 + Math.PI * 1.5, rr);
+  const [px, py] = pt(a1, r * 0.62);
+  return `<svg width="${d}" height="${d}" style="position:absolute;top:${titled ? 2 : (h * Z - d) / 2}px">
+    <path d="M${x0},${y0} A${rr},${rr} 0 1 1 ${xe},${ye}" stroke="#3A4152" stroke-width="${d * 0.07}" fill="none"/>
+    <path d="M${x0},${y0} A${rr},${rr} 0 0 1 ${x1},${y1}" stroke="${col}" stroke-width="${d * 0.07}" fill="none"/>
+    <circle cx="${cx}" cy="${cy}" r="${r * 0.68}" fill="${body}"/>
+    <line x1="${cx}" y1="${cy}" x2="${px}" y2="${py}" stroke="${style === 2 ? "#1B1F2A" : col}" stroke-width="${d * 0.06}" stroke-linecap="round"/>
+  </svg>`;
+}
+
+function itemHTML(it, w, h) {
+  const col = PALETTE[it.color ?? 6];
+  const p = param(it.param);
+  switch (it.type) {
+    case "knob":
+      return knobSVG(it, w, h) + ((it.size || 2) > 1 ? `<div class="knobtitle">${it.title || p?.title || it.param}</div>` : "");
+    case "label": return `<span class="label" style="color:${col}">${it.text}</span>`;
+    case "popup": return `<span style="color:${col}">${p?.choices?.[0] || "—"}</span><span style="color:${col}">▾</span>`;
+    case "field": return `<span style="color:${col}">0.00</span>`;
+    case "buttons": return (p?.choices || ["A", "B"]).map((c, i) => `<span class="${i === 0 ? "on" : ""}">${c}</span>`).join("");
+    case "toggle": return `<span>${it.title || p?.title || "Toggle"}</span>`;
+    case "chain": return `<span>${it.chain === "NOTE_FX" ? "Note FX" : "FX"}</span>`;
+    case "drawing":
+      return `<svg width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="none">
+        <polyline points="5,85 95,15" stroke="${PALETTE[1]}" stroke-width="5" fill="none"/></svg>`;
+  }
+  return it.type;
+}
+
+function render() {
+  stage.style.setProperty("--z", Z);
+  stage.style.width = layout.panel.width * Z + "px";
+  stage.style.height = layout.panel.height * Z + "px";
+  stage.style.backgroundSize = `${Z}px ${Z}px`;
+  stage.classList.toggle("grid", $("showgrid").checked);
+  stage.innerHTML = "";
+  layout.sections.forEach((sec, si) => {
+    const s = document.createElement("div");
+    s.className = "section" + (sel && sel.s === si && sel.i == null ? " selected" : "");
+    Object.assign(s.style, { left: sec.x * Z + "px", top: sec.y * Z + "px", width: sec.w * Z + "px", height: sec.h * Z + "px" });
+    s.addEventListener("mousedown", (e) => startDrag(e, si, null));
+    sec.items.forEach((it, ii) => {
+      const [w, h] = size(it);
+      const el = document.createElement("div");
+      const styleClass = (it.type === "popup" && it.style !== 1 && it.style !== 7) || (it.type === "field" && it.style !== 1)
+        ? " box" : (it.type === "buttons" ? (it.style === 6 ? " underline" : " box") : "");
+      el.className = `item ${it.type}${styleClass}` + (sel && sel.s === si && sel.i === ii ? " selected" : "");
+      Object.assign(el.style, { left: it.x * Z + "px", top: it.y * Z + "px", width: w * Z + "px", height: h * Z + "px" });
+      el.innerHTML = itemHTML(it, w, h);
+      el.title = `${it.type} ${it.param || it.text || it.chain || ""}  (${it.x}, ${it.y})`;
+      el.addEventListener("mousedown", (e) => { e.stopPropagation(); startDrag(e, si, ii); });
+      if (sel && sel.s === si && sel.i === ii && it.type !== "knob") addHandle(el, si, ii);
+      s.appendChild(el);
+    });
+    if (sel && sel.s === si && sel.i == null) addHandle(s, si, null);
+    stage.appendChild(s);
+  });
+  inspector();
+}
+
+function addHandle(el, si, ii) {
+  const hd = document.createElement("div");
+  hd.className = "handle";
+  hd.addEventListener("mousedown", (e) => { e.stopPropagation(); startDrag(e, si, ii, true); });
+  el.appendChild(hd);
+}
+
+function target(si, ii) { return ii == null ? layout.sections[si] : layout.sections[si].items[ii]; }
+
+function startDrag(e, si, ii, resize = false) {
+  if (e.button !== 0) return;
+  sel = { s: si, i: ii };
+  const t = target(si, ii);
+  const [w, h] = ii == null ? [t.w, t.h] : size(t);
+  snapshot();
+  drag = { si, ii, resize, mx: e.clientX, my: e.clientY, x: t.x, y: t.y, w, h, moved: false };
+  render();
+}
+
+window.addEventListener("mousemove", (e) => {
+  if (!drag) return;
+  const dx = Math.round((e.clientX - drag.mx) / Z), dy = Math.round((e.clientY - drag.my) / Z);
+  if (!dx && !dy && !drag.moved) return;
+  drag.moved = true;
+  const t = target(drag.si, drag.ii);
+  if (drag.resize) { t.w = Math.max(2, drag.w + dx); t.h = Math.max(2, drag.h + dy); }
+  else { t.x = Math.max(0, drag.x + dx); t.y = Math.max(0, drag.y + dy); }
+  render();
+});
+window.addEventListener("mouseup", () => {
+  if (drag && !drag.moved) history.pop();   // a click is not an edit
+  drag = null;
+});
+
+function field(labelText, value, onchange, type = "number") {
+  const l = document.createElement("label");
+  l.innerHTML = `<span>${labelText}</span>`;
+  const input = document.createElement("input");
+  input.type = type; input.value = value ?? "";
+  input.addEventListener("change", () => { snapshot(); onchange(type === "number" ? Number(input.value) : input.value); render(); });
+  l.appendChild(input);
+  return l;
+}
+
+function selectField(labelText, value, options, onchange) {
+  const l = document.createElement("label");
+  l.innerHTML = `<span>${labelText}</span>`;
+  const s = document.createElement("select");
+  options.forEach(([v, t]) => { const o = document.createElement("option"); o.value = v; o.textContent = t; if (String(v) === String(value)) o.selected = true; s.appendChild(o); });
+  s.addEventListener("change", () => { snapshot(); onchange(s.value); render(); });
+  l.appendChild(s);
+  return l;
+}
+
+function inspector() {
+  const box = $("inspector");
+  box.innerHTML = "";
+  if (!sel) {
+    box.innerHTML = `<h2>Nada seleccionado</h2><div class="hint">Haz clic en un elemento o en el fondo de una sección.<br><br>
+      <kbd>←↑→↓</kbd> mover 1 · <kbd>Shift</kbd>+flechas 5<br><kbd>Supr</kbd> borrar · <kbd>Ctrl+D</kbd> duplicar<br>
+      <kbd>Ctrl+Z</kbd> deshacer · <kbd>Ctrl+S</kbd> guardar<br><br>
+      Las medidas son unidades de la rejilla de Bitwig.</div>`;
+    return;
+  }
+  const t = target(sel.s, sel.i);
+  const h2 = document.createElement("h2");
+  h2.textContent = sel.i == null ? `Sección «${t.id}»` : `${t.type} ${t.param || t.text || t.chain || ""}`;
+  box.appendChild(h2);
+  if (sel.i == null) {
+    box.appendChild(field("Nombre", t.id, (v) => (t.id = v), "text"));
+  }
+  ["x", "y"].forEach((k) => box.appendChild(field(k.toUpperCase(), t[k], (v) => (t[k] = v))));
+  if (sel.i == null || t.type !== "knob") {
+    box.appendChild(field("Ancho", t.w, (v) => (t.w = v)));
+    box.appendChild(field("Alto", t.h, (v) => (t.h = v)));
+  }
+  if (sel.i != null) {
+    if (t.type === "knob") box.appendChild(selectField("Tamaño", t.size || 2, [[1, "1 pequeño"], [2, "2 mediano"], [3, "3 grande"]], (v) => (t.size = Number(v))));
+    if (t.type === "label") box.appendChild(field("Texto", t.text, (v) => (t.text = v), "text"));
+    if (["knob", "toggle"].includes(t.type)) box.appendChild(field("Título", t.title ?? "", (v) => { if (v) t.title = v; else delete t.title; }, "text"));
+    if (t.param !== undefined) {
+      const kinds = { knob: ["dec"], field: ["dec"], popup: ["idx"], buttons: ["idx"], toggle: ["bool"] }[t.type] || [];
+      box.appendChild(selectField("Parámetro", t.param, params.filter((p) => kinds.includes(p.kind)).map((p) => [p.id, `${p.title} (${p.id})`]), (v) => (t.param = v)));
+    }
+    if (STYLE_HINTS[t.type]) {
+      box.appendChild(field("Estilo", t.style ?? 0, (v) => (t.style = v)));
+      const hint = document.createElement("div"); hint.className = "hint"; hint.textContent = STYLE_HINTS[t.type]; box.appendChild(hint);
+    }
+    if (["knob", "label", "popup", "field"].includes(t.type)) {
+      const l = document.createElement("label"); l.innerHTML = "<span>Color</span>";
+      const sw = document.createElement("div"); sw.className = "swatches";
+      PALETTE.forEach((c, i) => {
+        const d = document.createElement("div"); d.className = "swatch" + ((t.color ?? 6) === i ? " on" : "");
+        d.style.background = c; d.textContent = i;
+        d.addEventListener("click", () => { snapshot(); t.color = i; render(); });
+        sw.appendChild(d);
+      });
+      l.appendChild(sw); box.appendChild(l);
+    }
+    const row = document.createElement("div"); row.className = "row";
+    row.innerHTML = `<button id="dup">Duplicar</button><button id="del">Borrar</button>`;
+    box.appendChild(row);
+    $("dup").onclick = duplicate; $("del").onclick = remove;
+  } else {
+    const row = document.createElement("div"); row.className = "row";
+    const types = ["knob", "label", "popup", "field", "buttons", "toggle", "chain", "drawing"];
+    row.innerHTML = `<select id="newtype">${types.map((x) => `<option>${x}</option>`).join("")}</select>
+      <button id="additem">+ Añadir aquí</button><button id="delsec">Borrar sección</button>`;
+    box.appendChild(row);
+    $("additem").onclick = addItem;
+    $("delsec").onclick = () => { if (confirm("¿Borrar la sección y todo lo que tiene?")) { snapshot(); layout.sections.splice(sel.s, 1); sel = null; render(); } };
+  }
+}
+
+function addItem() {
+  const type = $("newtype").value;
+  const first = (kind) => params.find((p) => p.kind === kind)?.id;
+  const base = { type, x: 1, y: 1 };
+  const extra = {
+    knob: { param: first("dec"), size: 2, color: 6 }, label: { text: "Label", w: 12, h: 3, color: 6 },
+    popup: { param: first("idx"), w: 22, h: 5, style: 1, color: 1 }, field: { param: first("dec"), w: 14, h: 4, style: 1, color: 1 },
+    buttons: { param: first("idx"), w: 20, h: 4, style: 6 }, toggle: { param: first("bool"), w: 11, h: 5, style: 2 },
+    chain: { chain: "FX", w: 39, h: 7 }, drawing: { w: 13, h: 10 },
+  }[type];
+  snapshot();
+  layout.sections[sel.s].items.push({ ...base, ...extra });
+  sel = { s: sel.s, i: layout.sections[sel.s].items.length - 1 };
+  render();
+}
+
+function duplicate() {
+  if (!sel || sel.i == null) return;
+  snapshot();
+  const copy = JSON.parse(JSON.stringify(target(sel.s, sel.i)));
+  copy.x += 2; copy.y += 2;
+  layout.sections[sel.s].items.push(copy);
+  sel.i = layout.sections[sel.s].items.length - 1;
+  render();
+}
+
+function remove() {
+  if (!sel || sel.i == null) return;
+  snapshot();
+  layout.sections[sel.s].items.splice(sel.i, 1);
+  sel = null;
+  render();
+}
+
+window.addEventListener("keydown", (e) => {
+  if (["INPUT", "SELECT"].includes(document.activeElement.tagName)) return;
+  if ((e.ctrlKey || e.metaKey) && e.key === "z") { e.preventDefault(); undo(); return; }
+  if ((e.ctrlKey || e.metaKey) && e.key === "s") { e.preventDefault(); save(false); return; }
+  if ((e.ctrlKey || e.metaKey) && e.key === "d") { e.preventDefault(); duplicate(); return; }
+  if (!sel) return;
+  if (e.key === "Delete" || e.key === "Backspace") { e.preventDefault(); remove(); return; }
+  const step = e.shiftKey ? 5 : 1;
+  const move = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] }[e.key];
+  if (move) {
+    e.preventDefault();
+    snapshot();
+    const t = target(sel.s, sel.i);
+    t.x = Math.max(0, t.x + move[0]); t.y = Math.max(0, t.y + move[1]);
+    render();
+  }
+});
+
+async function save(build) {
+  status(build ? "Guardando y construyendo…" : "Guardando…");
+  const r = await fetch(`/api/save${build ? "?build=1" : ""}`, { method: "POST", body: JSON.stringify(layout) });
+  const out = await r.json();
+  if (!r.ok) { status("Error: " + out.error); return; }
+  if (!build) { status("Guardado en layout.json."); return; }
+  status(out.build_ok ? "Construido. Reinicia Bitwig desde Patchbay para verlo." : "La construcción falló:\n" + out.build_output);
+}
+
+$("undo").onclick = undo;
+$("save").onclick = () => save(false);
+$("build").onclick = () => save(true);
+$("zoom").oninput = (e) => { Z = Number(e.target.value); render(); };
+$("showgrid").onchange = render;
+$("addsection").onclick = () => {
+  snapshot();
+  layout.sections.push({ id: "section" + (layout.sections.length + 1), x: 0, y: 0, w: 30, h: 20, items: [] });
+  sel = { s: layout.sections.length - 1, i: null };
+  render();
+};
+stage.addEventListener("mousedown", (e) => { if (e.target === stage) { sel = null; render(); } });
+
+(async () => {
+  const [l, p] = await Promise.all([fetch("/api/layout").then((r) => r.json()), fetch("/api/params").then((r) => r.json())]);
+  layout = l; params = p.params;
+  $("title").textContent = `Panel Editor · ${p.device}`;
+  document.title = `Panel Editor · ${p.device}`;
+  status("Listo. Mueve con el ratón o las flechas.");
+  render();
+})();
+</script>
+</body>
+</html>

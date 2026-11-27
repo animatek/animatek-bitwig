@@ -88,6 +88,15 @@ SkSL para el panel y el compilador del propio `bitwig.jar` de la 6.1.7. Montado 
 - Primer objetivo: ATEK303 como instrumento nativo. La secuencia vive en el clip: velocidad >= 100
   es accent y notas solapadas son slide (asi lo decide Open303, `rosic_Open303.cpp:193-195`).
 
+## Editor de paneles
+
+`tools/panel-editor.sh [devices-src/<device>]` abre en el navegador (`http://127.0.0.1:4310`,
+solo esta maquina) un editor visual del panel: arrastrar elementos y secciones sobre la rejilla
+de Bitwig, flechas para mover de 1 en 1 (Shift: 5), tamano, estilo, color, anadir, duplicar,
+borrar y deshacer. Edita el `layout.json` del device, del que `document.py` construye el panel;
+"Guardar y construir" ademas corre `build.py`. Despues, reiniciar Bitwig desde Patchbay.
+Los estilos y colores validos estan en `document.py` (POPUP_HEADER, KNOB_MAIN...).
+
 ## Reglas
 
 - **Nunca** entra en Git nada de Bitwig: ni `bitwig.jar`, ni clases descompiladas, ni mapas.
