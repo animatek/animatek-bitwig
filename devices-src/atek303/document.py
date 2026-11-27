@@ -435,22 +435,36 @@ KNOB_STYLES = 4           # NORMAL, DARKEST, LIGHTER, LIGHTEST
 NUMBER_FIELD_STYLES = 3   # NORMAL, WHITE, IN_DISPLAY
 
 
-ICON_FORMATS = ["device/power_on", "device/power_on.svg", "power_on", "icons/device/power_on.svg"]
+ADSR_ICON = str(__import__("pathlib").Path.home() / "Bitwig-Studio-6.1.7/opt/bitwig-studio/resources/icons/device/adsr.svg")
+ICON_FORMATS = ["device/adsr.svg", "device/adsr", "adsr.svg", "adsr", "icons/device/adsr.svg",
+                "/icons/device/adsr.svg", ADSR_ICON]
+OWN_SVG = ('<svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 15 15">'
+           '<path d="M1 13 L4 2 L8 8 L12 8 L14 13" fill="none" stroke="#000" stroke-width="1.5"/></svg>')
+
+
+def raw_image(fields_extra, x, y, w, h):
+    """An image item exactly as given (no .svg appended): for the Lab."""
+    fields = {"layout_settings#6226": v("Object", grid_layout(x, y, w, h)), "is_visible#6309": v("Bool", True)}
+    fields.update(fields_extra)
+    return obj(1719, "image_panel_item", fields)
 
 
 def lab_panel(ref_of, mod_ref=None):
-    """Panel Lab 2: icon name formats, toggles with icons and the modulation arrow."""
-    items = [label("Lab 2: iconos, botones con icono y flecha de modulacion", 2, 0, 120)]
+    """Panel Lab 3: which icon name format Bitwig draws (the same ADSR icon, eight ways)."""
+    items = [label("Lab 3: el mismo icono (ADSR) escrito de 8 formas; cual se ve?", 2, 0, 140)]
     for i, name in enumerate(ICON_FORMATS):
+        x = 2 + (i % 4) * 50
+        y = 5 if i < 4 else 17
+        shown = name if len(name) < 30 else "ruta completa"
+        items += [label(f"{i}: {shown}", x, y, 48),
+                  raw_image({"filename#6258": v("String", name), "color#6521": v("Int16", 3)}, x + 20, y + 4, 6, 6)]
+    items += [label("7: svg_data (dibujo propio)", 152, 17, 48),
+              raw_image({"svg_data#6259": v("String", OWN_SVG), "color#6521": v("Int16", 3)}, 172, 21, 6, 6)]
+    for i, name in enumerate(["device/power_on.svg", "device/power_on", "power_on.svg"]):
         x = 2 + i * 50
-        items += [label(f"img {i}: {name}", x, 4, 48), image(name, x + 20, 8, 4, 4)]
-    for i, name in enumerate(ICON_FORMATS):
-        x = 2 + i * 50
-        t = toggle(ref_of["FILTER_ON"], "", f"icon {name}", x + 18, 22, 8, 5)
+        t = toggle(ref_of["FILTER_ON"], "", "", x + 18, 34, 8, 5)
         t["fields"]["icon_name#6239"] = v("String", name)
-        items += [label(f"tog {i}", x, 17, 48), t]
-    items += [label("flecha", 2, 33, 20), mapping_source(mod_ref, 8, 37, 5, 4),
-              label("ratio (popup 7)", 30, 33, 30), popup(ref_of["RATIO"], "", 34, 37, 14, color=1, style=7)]
+        items += [label(f"boton {i}: {name}", x, 30, 48), t]
     grid = obj(1681, "grid_panel_item", {
         "layout_settings#6226": v("NullObject"), "items#6221": v("ObjectList", owned(*items)),
         "border_style#6228": v("Byte", 0), "title#6242": v("String", ""),

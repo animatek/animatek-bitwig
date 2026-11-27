@@ -167,7 +167,7 @@ function itemHTML(it, w, h) {
     case "chain": return `<span>${it.chain === "NOTE_FX" ? "Note FX" : "FX"}</span>`;
     case "icon": {
       // Tinted with the palette colour, as Bitwig draws it (the SVG used as a mask).
-      const url = `url("/icon/${encodeURI(it.icon)}")`;
+      const url = `url('/icon/${encodeURI(it.icon)}')`;   // single quotes: it goes inside style="..."
       return `<div title="${it.icon}" style="width:100%;height:100%;background:${col};-webkit-mask:${url} center/contain no-repeat;mask:${url} center/contain no-repeat"></div>`;
     }
     case "modsource": return `<span style="color:${PALETTE[1]};font-weight:700;font-size:calc(var(--z)*2.6px)">●→</span>`;
